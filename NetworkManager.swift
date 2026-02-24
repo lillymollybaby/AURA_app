@@ -54,12 +54,15 @@ struct MovieResponse: Codable {
     let id: Int?
     let tmdb_id: Int?
     let title: String
-    let year: Int?
+    let year: String?
     let rating: Double?
     let poster_url: String?
     let watched: Bool?
     let overview: String?
     let review: String?
+    
+    var stableId: Int { tmdb_id ?? id ?? title.hashValue }
+    var yearInt: Int? { if let y = year { return Int(y) } else { return nil } }
 }
 
 struct MovieSearchResult: Codable {

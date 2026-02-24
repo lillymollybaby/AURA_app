@@ -430,7 +430,7 @@ struct CinemaView: View {
                             HStack { Image(systemName: "magnifyingglass").foregroundColor(.secondary); Text("Results").font(.headline) }.padding(.horizontal)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
-                                    ForEach(searchResults, id: \.tmdb_id) { m in
+                                    ForEach(searchResults, id: \.stableId) { m in
                                         MovieCard(movie: m, color: Color(red: 0.1, green: 0.12, blue: 0.2))
                                     }
                                 }.padding(.horizontal)
@@ -443,7 +443,7 @@ struct CinemaView: View {
                             HStack { Image(systemName: "flame.fill").foregroundColor(.secondary); Text("Trending").font(.headline) }.padding(.horizontal)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
-                                    ForEach(trending, id: \.tmdb_id) { m in
+                                    ForEach(trending, id: \.stableId) { m in
                                         MovieCard(movie: m, color: Color(red: 0.1, green: 0.12, blue: 0.25))
                                     }
                                 }.padding(.horizontal)
@@ -456,7 +456,7 @@ struct CinemaView: View {
                             HStack { Image(systemName: "play.circle.fill").foregroundColor(.secondary); Text("My List").font(.headline) }.padding(.horizontal)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
-                                    ForEach(myMovies, id: \.tmdb_id) { m in
+                                    ForEach(myMovies, id: \.stableId) { m in
                                         MovieCard(movie: m, color: Color(red: 0.15, green: 0.1, blue: 0.2))
                                     }
                                 }.padding(.horizontal)
@@ -526,7 +526,7 @@ struct MovieCard: View {
             Text(movie.title).font(.caption).fontWeight(.semibold).lineLimit(1).padding(.top, 6)
             HStack(spacing: 4) {
                 Image(systemName: "star.fill").font(.caption2).foregroundColor(.yellow)
-                Text("\(movie.rating.map { String(format: "%.1f", $0) } ?? "—") · \(movie.year.map { String($0) } ?? "")").font(.caption).foregroundColor(.secondary)
+                Text("\(movie.rating.map { String(format: "%.1f", $0) } ?? "—") · \(movie.year ?? "")").font(.caption).foregroundColor(.secondary)
             }
         }.frame(width: 150)
     }
