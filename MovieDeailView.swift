@@ -263,7 +263,7 @@ struct MovieDetailView: View {
                                 isLoadingCritique = true
                                 Task {
                                     let result = try? await NetworkManager.shared.getFilmCritique(tmdbId: movie.stableId)
-                                    critique = result?["critique"] ?? "Не удалось загрузить рецензию"
+                                    critique = (try? await NetworkManager.shared.getFilmCritique(tmdbId: movie.stableId)) ?? "Не удалось загрузить рецензию"
                                     isLoadingCritique = false
                                 }
                             }

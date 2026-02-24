@@ -322,8 +322,13 @@ class NetworkManager {
         return try await request("/cinema/words/\(tmdbId)?level=\(level)", method: "POST")
     }
     
-    func getFilmCritique(tmdbId: Int) async throws -> [String: String] {
-        return try await request("/cinema/film-critic/\(tmdbId)", method: "POST")
+    func getFilmCritique(tmdbId: Int) async throws -> String {
+        struct CritiqueResponse: Codable {
+            let critique: String?
+            let title: String?
+        }
+        let response: CritiqueResponse = try await request("/cinema/film-critic/\(tmdbId)", method: "POST")
+        return response.critique ?? "Рецензия недоступна"
     }
     
     func searchMovies(query: String) async throws -> [MovieResponse] {
