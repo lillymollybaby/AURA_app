@@ -6,6 +6,9 @@ struct RootView: View {
     var body: some View {
         if isLoggedIn {
             ContentView()
+                .onReceive(NotificationCenter.default.publisher(for: .didLogout)) { _ in
+                    isLoggedIn = false
+                }
         } else {
             AuthView()
                 .onReceive(NotificationCenter.default.publisher(for: .didLogin)) { _ in
@@ -17,4 +20,5 @@ struct RootView: View {
 
 extension Notification.Name {
     static let didLogin = Notification.Name("didLogin")
+    static let didLogout = Notification.Name("didLogout")
 }

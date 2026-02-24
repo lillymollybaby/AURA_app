@@ -49,7 +49,7 @@ struct ProfileView: View {
                 Button("Cancel", role: .cancel) {}
                 Button("Sign Out", role: .destructive) {
                     AuthStorage.shared.logout()
-                    NotificationCenter.default.post(name: Notification.Name("didLogout"), object: nil)
+                    NotificationCenter.default.post(name: .didLogout, object: nil)
                 }
             }
         }
@@ -63,28 +63,134 @@ struct ProfileView: View {
 
 // MARK: - LOGISTICS VIEW
 struct LogisticsView: View {
+    @State private var searchQuery = ""
+    @State private var places: [PlaceResult] = []
+    @State private var trafficAdvice: TrafficAdviceResponse?
+    @State private var isSearching = false
+
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 0) {
-                    LeaveNowBanner().padding(.horizontal).padding(.top, 8)
-                    LiveTrafficCard().padding(.horizontal).padding(.top, 12)
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            Image(systemName: "arrow.triangle.branch").foregroundColor(.secondary)
-                            Text("Today's Route").font(.headline)
-                        }.padding(.horizontal).padding(.top, 20).padding(.bottom, 12)
-                        RouteItemView(icon: "briefcase.fill", iconColor: .orange, title: "Morning Standup", subtitle: "Office — 3rd Floor", time: "9:00", driveTime: "22 min", parking: "+3 park", statusText: "On Time", statusColor: .green, note: "Light traffic on your usual route", noteColor: Color.blue.opacity(0.15), noteIcon: "sparkle", noteIconColor: .blue)
-                        RouteItemView(icon: "cross.fill", iconColor: .red, title: "Dentist Appointment", subtitle: "Dr. Klein — 45 Oak Ave", time: "11:30", driveTime: "18 min", parking: "+5 park", statusText: "Leave Now", statusColor: .red, note: "Leave by 11:05 — accident on Main St adds 7 min", noteColor: Color.red.opacity(0.12), noteIcon: "exclamationmark.triangle.fill", noteIconColor: .red)
-                        RouteItemView(icon: "building.columns.fill", iconColor: .green, title: "Bank Transfer", subtitle: "Chase — Downtown Branch", time: "14:15", driveTime: "14 min", parking: "+4 park", statusText: "Delayed", statusColor: .orange, note: "Re-routed via Elm St — saves 6 min", noteColor: Color.blue.opacity(0.12), noteIcon: "sparkle", noteIconColor: .blue)
-                        RouteItemView(icon: "bag.fill", iconColor: .purple, title: "Grocery Run", subtitle: "Whole Foods — Riverside", time: "16:00", driveTime: "12 min", parking: "+3 park", statusText: "On Time", statusColor: .green, note: "On your way home — no extra travel time", noteColor: Color.blue.opacity(0.12), noteIcon: "sparkle", noteIconColor: .blue)
+                    // Search Bar
+                    HStack {
+                        Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                        TextField("Search places...", text: $searchQuery)
+                            .onSubmit { Task { await searchPlaces() } }
                     }
+                    .padding(12)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                    // Traffic Advice
+                    if let advice = trafficAdvice {
+                        TrafficAdviceBanner(advice: advice)
+                            .padding(.horizontal).padding(.top, 12)
+                    }
+
+                    // Live Traffic Card (static but pretty)
+                    LiveTrafficCard().padding(.horizontal).padding(.top, 12)
+
+                    // Search Results
+                    if isSearching {
+                        ProgressView("Searching...").padding(.top, 20)
+                    } else if !places.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack {
+                                Image(systemName: "mappin.and.ellipse").foregroundColor(.secondary)
+                                Text("Results").font(.headline)
+                                Spacer()
+                                Text("\(places.count) found").font(.caption).foregroundColor(.secondary)
+                            }.padding(.horizontal).padding(.top, 20).padding(.bottom, 12)
+
+                            ForEach(Array(places.enumerated()), id: \.offset) { idx, place in
+                                PlaceRow(place: place)
+                                    .padding(.horizontal)
+                                if idx < places.count - 1 { Divider().padding(.horizontal) }
+                            }
+                        }
+                    } else {
+                        // Default routes when no search
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack {
+                                Image(systemName: "arrow.triangle.branch").foregroundColor(.secondary)
+                                Text("Today's Route").font(.headline)
+                            }.padding(.horizontal).padding(.top, 20).padding(.bottom, 12)
+                            RouteItemView(icon: "briefcase.fill", iconColor: .orange, title: "Morning Standup", subtitle: "Office — 3rd Floor", time: "9:00", driveTime: "22 min", parking: "+3 park", statusText: "On Time", statusColor: .green, note: "Light traffic on your usual route", noteColor: Color.blue.opacity(0.15), noteIcon: "sparkle", noteIconColor: .blue)
+                            RouteItemView(icon: "cross.fill", iconColor: .red, title: "Dentist Appointment", subtitle: "Dr. Klein — 45 Oak Ave", time: "11:30", driveTime: "18 min", parking: "+5 park", statusText: "Leave Now", statusColor: .red, note: "Leave by 11:05 — accident on Main St adds 7 min", noteColor: Color.red.opacity(0.12), noteIcon: "exclamationmark.triangle.fill", noteIconColor: .red)
+                            RouteItemView(icon: "building.columns.fill", iconColor: .green, title: "Bank Transfer", subtitle: "Chase — Downtown Branch", time: "14:15", driveTime: "14 min", parking: "+4 park", statusText: "Delayed", statusColor: .orange, note: "Re-routed via Elm St — saves 6 min", noteColor: Color.blue.opacity(0.12), noteIcon: "sparkle", noteIconColor: .blue)
+                        }
+                    }
+
                     Spacer(minLength: 20)
                 }
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Logistics").navigationBarTitleDisplayMode(.large)
         }
+        .task {
+            if let advice = try? await NetworkManager.shared.getTrafficAdvice(destination: "work") {
+                trafficAdvice = advice
+            }
+        }
+    }
+
+    func searchPlaces() async {
+        guard !searchQuery.isEmpty else { return }
+        isSearching = true
+        if let results = try? await NetworkManager.shared.searchPlace(query: searchQuery) {
+            places = results
+        }
+        // Also get traffic advice for the search
+        if let advice = try? await NetworkManager.shared.getTrafficAdvice(destination: searchQuery) {
+            trafficAdvice = advice
+        }
+        isSearching = false
+    }
+}
+
+struct TrafficAdviceBanner: View {
+    let advice: TrafficAdviceResponse
+    var bannerColor: Color {
+        if advice.traffic_status.contains("сильн") { return .red }
+        if advice.traffic_status.contains("умеренн") { return .orange }
+        return .green
+    }
+    var body: some View {
+        HStack {
+            Image(systemName: "car.fill").foregroundColor(.white).font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Traffic: \(advice.traffic_status)").font(.headline).foregroundColor(.white)
+                Text(advice.advice).font(.caption).foregroundColor(.white.opacity(0.9)).lineLimit(3)
+            }
+            Spacer()
+        }.padding().background(bannerColor).cornerRadius(14)
+    }
+}
+
+struct PlaceRow: View {
+    let place: PlaceResult
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(Color.blue.opacity(0.12)).frame(width: 40, height: 40)
+                Image(systemName: "mappin").foregroundColor(.blue)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(place.name).font(.subheadline).fontWeight(.semibold)
+                if let address = place.address, !address.isEmpty {
+                    Text(address).font(.caption).foregroundColor(.secondary)
+                }
+                if let type = place.type, !type.isEmpty {
+                    Text(type).font(.caption2).foregroundColor(.blue)
+                }
+            }
+            Spacer()
+            Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+        }.padding(.vertical, 8)
     }
 }
 
@@ -175,7 +281,7 @@ struct StatusBadge: View {
 
 // MARK: - LANGUAGES VIEW
 struct LanguagesView: View {
-    @State private var streak = 0
+    @State private var streak: StreakResponse?
     @State private var vocab: [VocabResponse] = []
     let days = ["S", "F", "T", "W", "T", "M", "S"]
     let completed = [true, true, true, true, true, false, true]
@@ -195,7 +301,7 @@ struct LanguagesView: View {
                             }
                             Spacer()
                             VStack(alignment: .trailing) {
-                                Text("\(streak > 0 ? streak : 14)").font(.title).fontWeight(.bold).foregroundColor(.orange)
+                                Text("\(streak?.streak_days ?? 0)").font(.title).fontWeight(.bold).foregroundColor(.orange)
                                 Text("day streak").font(.caption).foregroundColor(.secondary)
                             }
                         }
@@ -206,9 +312,9 @@ struct LanguagesView: View {
                             Image(systemName: "chart.bar.fill").foregroundColor(.secondary)
                             Text("Weekly Progress").font(.headline)
                             Spacer()
-                            Text("42/60 min").font(.caption).foregroundColor(.secondary)
+                            Text("\(streak?.learned_words ?? 0)/\(streak?.total_words ?? 0) words").font(.caption).foregroundColor(.secondary)
                         }
-                        ProgressView(value: 42, total: 60).tint(.blue).scaleEffect(x: 1, y: 1.5, anchor: .center)
+                        ProgressView(value: Double(streak?.progress_percent ?? 0), total: 100).tint(.blue).scaleEffect(x: 1, y: 1.5, anchor: .center)
                         HStack {
                             ForEach(0..<7) { i in
                                 VStack(spacing: 4) {
@@ -230,15 +336,25 @@ struct LanguagesView: View {
                                 Spacer()
                                 Text("\(vocab.count) words").font(.caption).foregroundColor(.blue)
                             }
-                            ForEach(vocab.prefix(5), id: \.id) { word in
+                            ForEach(vocab.prefix(10), id: \.id) { word in
                                 HStack {
-                                    VStack(spacing: 4) { ForEach(0..<3) { _ in Circle().fill(Color.orange).frame(width: 5, height: 5) } }.padding(.top, 4)
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(word.word).font(.subheadline).fontWeight(.semibold)
                                         Text(word.translation).font(.caption).foregroundColor(.secondary)
+                                        if let example = word.example, !example.isEmpty {
+                                            Text(example).font(.caption2).foregroundColor(.blue).italic()
+                                        }
                                     }
                                     Spacer()
-                                    if word.learned { Image(systemName: "checkmark.circle.fill").foregroundColor(.green) }
+                                    if word.learned {
+                                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                                    } else {
+                                        Button {
+                                            Task { try? await NetworkManager.shared.markWordLearned(wordId: word.id) }
+                                        } label: {
+                                            Image(systemName: "circle").foregroundColor(.secondary)
+                                        }
+                                    }
                                 }.padding(.vertical, 4)
                             }
                         }.padding().background(Color(.systemBackground)).cornerRadius(14).shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2).padding(.horizontal)
@@ -257,7 +373,7 @@ struct LanguagesView: View {
         }
         .task {
             if let v = try? await NetworkManager.shared.getVocabulary() { vocab = v }
-            if let s = try? await NetworkManager.shared.getLearningStreak() { streak = s }
+            if let s: StreakResponse = try? await NetworkManager.shared.request("/languages/streak") { streak = s }
         }
     }
 }
@@ -314,8 +430,8 @@ struct CinemaView: View {
                             HStack { Image(systemName: "magnifyingglass").foregroundColor(.secondary); Text("Results").font(.headline) }.padding(.horizontal)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
-                                    ForEach(searchResults, id: \.id) { m in
-                                        MovieCard(title: m.title, director: "", rating: m.rating.map { String(format: "%.1f", $0) } ?? "—", year: m.year.map { String($0) } ?? "", color: Color(red: 0.1, green: 0.12, blue: 0.2))
+                                    ForEach(searchResults, id: \.tmdb_id) { m in
+                                        MovieCard(movie: m, color: Color(red: 0.1, green: 0.12, blue: 0.2))
                                     }
                                 }.padding(.horizontal)
                             }
@@ -327,8 +443,8 @@ struct CinemaView: View {
                             HStack { Image(systemName: "flame.fill").foregroundColor(.secondary); Text("Trending").font(.headline) }.padding(.horizontal)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
-                                    ForEach(trending, id: \.id) { m in
-                                        MovieCard(title: m.title, director: "", rating: m.rating.map { String(format: "%.1f", $0) } ?? "—", year: m.year.map { String($0) } ?? "", color: Color(red: 0.1, green: 0.12, blue: 0.25))
+                                    ForEach(trending, id: \.tmdb_id) { m in
+                                        MovieCard(movie: m, color: Color(red: 0.1, green: 0.12, blue: 0.25))
                                     }
                                 }.padding(.horizontal)
                             }
@@ -340,8 +456,8 @@ struct CinemaView: View {
                             HStack { Image(systemName: "play.circle.fill").foregroundColor(.secondary); Text("My List").font(.headline) }.padding(.horizontal)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
-                                    ForEach(myMovies, id: \.id) { m in
-                                        MovieCard(title: m.title, director: "", rating: m.rating.map { String(format: "%.1f", $0) } ?? "—", year: m.year.map { String($0) } ?? "", color: Color(red: 0.15, green: 0.1, blue: 0.2))
+                                    ForEach(myMovies, id: \.tmdb_id) { m in
+                                        MovieCard(movie: m, color: Color(red: 0.15, green: 0.1, blue: 0.2))
                                     }
                                 }.padding(.horizontal)
                             }
@@ -381,22 +497,36 @@ struct GenreChip: View {
 }
 
 struct MovieCard: View {
-    let title: String; let director: String; let rating: String; let year: String; let color: Color
+    let movie: MovieResponse
+    let color: Color
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
-                RoundedRectangle(cornerRadius: 12).fill(color).frame(width: 150, height: 200)
-                VStack {
-                    Spacer()
-                    Image(systemName: "sparkles").font(.largeTitle).foregroundColor(.white.opacity(0.3))
-                    Spacer()
-                    Text(title).font(.subheadline).fontWeight(.bold).foregroundColor(.white).multilineTextAlignment(.center).padding(.horizontal, 8).padding(.bottom, 16)
+                if let posterUrl = movie.poster_url, let url = URL(string: posterUrl) {
+                    AsyncImage(url: url) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        RoundedRectangle(cornerRadius: 12).fill(color)
+                            .overlay(Image(systemName: "sparkles").font(.largeTitle).foregroundColor(.white.opacity(0.3)))
+                    }
+                    .frame(width: 150, height: 200)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                } else {
+                    RoundedRectangle(cornerRadius: 12).fill(color).frame(width: 150, height: 200)
+                        .overlay(
+                            VStack {
+                                Spacer()
+                                Image(systemName: "sparkles").font(.largeTitle).foregroundColor(.white.opacity(0.3))
+                                Spacer()
+                                Text(movie.title).font(.subheadline).fontWeight(.bold).foregroundColor(.white).multilineTextAlignment(.center).padding(.horizontal, 8).padding(.bottom, 16)
+                            }
+                        )
                 }
             }.frame(width: 150, height: 200)
-            if !director.isEmpty { Text(director).font(.caption).foregroundColor(.secondary).padding(.top, 6) }
+            Text(movie.title).font(.caption).fontWeight(.semibold).lineLimit(1).padding(.top, 6)
             HStack(spacing: 4) {
                 Image(systemName: "star.fill").font(.caption2).foregroundColor(.yellow)
-                Text("\(rating) · \(year)").font(.caption).foregroundColor(.secondary)
+                Text("\(movie.rating.map { String(format: "%.1f", $0) } ?? "—") · \(movie.year.map { String($0) } ?? "")").font(.caption).foregroundColor(.secondary)
             }
         }.frame(width: 150)
     }
@@ -420,9 +550,11 @@ struct CriticQuestion: View {
 struct FoodView: View {
     @State private var summary: DailySummaryResponse?
     @State private var meals: [MealResponse] = []
+    @State private var showCamera = false
+    @State private var dinnerIdeas: String?
     var progress: Double {
-        guard let s = summary, s.calorie_goal > 0 else { return 0.54 }
-        return min(Double(s.total_calories) / Double(s.calorie_goal), 1.0)
+        guard let s = summary, s.calorie_goal > 0 else { return 0 }
+        return min(s.total_calories / Double(s.calorie_goal), 1.0)
     }
     var body: some View {
         NavigationView {
@@ -436,15 +568,15 @@ struct FoodView: View {
                                     .stroke(AngularGradient(colors: [.blue, .cyan], center: .center), style: StrokeStyle(lineWidth: 8, lineCap: .round))
                                     .frame(width: 90, height: 90).rotationEffect(.degrees(-90))
                                 VStack(spacing: 0) {
-                                    Text("\(summary?.total_calories ?? 0)").font(.system(size: 18, weight: .bold))
+                                    Text("\(Int(summary?.total_calories ?? 0))").font(.system(size: 18, weight: .bold))
                                     Text("kcal").font(.caption2).foregroundColor(.secondary)
                                     Text("of \(summary?.calorie_goal ?? 2200)").font(.caption2).foregroundColor(.secondary)
                                 }
                             }
                             HStack(spacing: 16) {
-                                MacroBar(value: Int(summary?.total_protein ?? 0), unit: "g", label: "Protein", color: .blue)
+                                MacroBar(value: Int(summary?.total_proteins ?? 0), unit: "g", label: "Protein", color: .blue)
                                 MacroBar(value: Int(summary?.total_carbs ?? 0), unit: "g", label: "Carbs", color: .orange)
-                                MacroBar(value: Int(summary?.total_fat ?? 0), unit: "g", label: "Fat", color: .purple)
+                                MacroBar(value: Int(summary?.total_fats ?? 0), unit: "g", label: "Fat", color: .purple)
                             }
                         }
                         HStack(spacing: 8) {
@@ -454,30 +586,53 @@ struct FoodView: View {
                         }
                     }.padding().background(Color(.systemBackground)).cornerRadius(14).shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2).padding(.horizontal)
 
+                    // AI Advice
+                    if let advice = summary?.ai_advice, !advice.isEmpty {
+                        HStack(spacing: 8) {
+                            Image(systemName: "sparkles").foregroundColor(.blue)
+                            Text(advice).font(.caption).foregroundColor(.blue)
+                        }
+                        .padding()
+                        .background(Color.blue.opacity(0.08))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    }
+
                     VStack(alignment: .leading, spacing: 12) {
                         HStack { Image(systemName: "fork.knife").foregroundColor(.secondary); Text("Today's Meals").font(.headline) }
                         if meals.isEmpty { Text("No meals logged today").font(.subheadline).foregroundColor(.secondary).padding(.vertical, 8) }
                         ForEach(Array(meals.enumerated()), id: \.element.id) { idx, meal in
                             if idx > 0 { Divider() }
-                            MealRow(emoji: mealEmoji(meal.meal_type), bgColor: mealColor(meal.meal_type), title: meal.name,
-                                description: "\(Int(meal.protein))g protein · \(Int(meal.carbs))g carbs",
-                                time: formatTime(meal.created_at), calories: "\(Int(meal.calories)) kcal",
-                                protein: "\(Int(meal.protein))g P", carbs: "\(Int(meal.carbs))g C", tip: nil)
+                            MealRow(emoji: mealEmoji(meal.meal_type ?? "snack"), bgColor: mealColor(meal.meal_type ?? "snack"), title: meal.name,
+                                description: "\(Int(meal.proteins))g protein · \(Int(meal.carbs))g carbs",
+                                time: formatTime(meal.eaten_at), calories: "\(Int(meal.calories)) kcal",
+                                protein: "\(Int(meal.proteins))g P", carbs: "\(Int(meal.carbs))g C", tip: meal.ai_analysis)
                         }
                     }.padding().background(Color(.systemBackground)).cornerRadius(14).shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2).padding(.horizontal)
 
+                    // Dinner Ideas
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "sparkles").foregroundColor(.secondary)
                             Text("Dinner Ideas").font(.headline)
                             Spacer()
-                            Text("Based on today's intake").font(.caption).foregroundColor(.secondary)
+                            Button("Get Ideas") {
+                                Task {
+                                    if let ideas = try? await NetworkManager.shared.getDinnerIdeas() {
+                                        dinnerIdeas = ideas.ideas
+                                    }
+                                }
+                            }.font(.caption).foregroundColor(.blue)
                         }
-                        DinnerIdeaRow(emoji: "🐟", title: "Salmon & Quinoa Bowl", subtitle: "You're short on protein today", calories: "520 kcal")
-                        Divider()
-                        DinnerIdeaRow(emoji: "🍠", title: "Sweet Potato Stir-Fry", subtitle: "Complex carbs for sustained energy", calories: "380 kcal")
-                        Divider()
-                        DinnerIdeaRow(emoji: "🥑", title: "Avocado Toast", subtitle: "Healthy fats to hit your daily target", calories: "310 kcal")
+                        if let ideas = dinnerIdeas {
+                            Text(ideas).font(.subheadline).foregroundColor(.secondary)
+                        } else {
+                            DinnerIdeaRow(emoji: "🐟", title: "Salmon & Quinoa Bowl", subtitle: "You're short on protein today", calories: "520 kcal")
+                            Divider()
+                            DinnerIdeaRow(emoji: "🍠", title: "Sweet Potato Stir-Fry", subtitle: "Complex carbs for sustained energy", calories: "380 kcal")
+                            Divider()
+                            DinnerIdeaRow(emoji: "🥑", title: "Avocado Toast", subtitle: "Healthy fats to hit your daily target", calories: "310 kcal")
+                        }
                     }.padding().background(Color(.systemBackground)).cornerRadius(14).shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2).padding(.horizontal)
 
                     VStack(alignment: .leading, spacing: 12) {
@@ -496,8 +651,8 @@ struct FoodView: View {
             .background(Color(.systemGroupedBackground)).navigationTitle("Food").navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {}) {
-                        Image(systemName: "plus").font(.system(size: 16, weight: .semibold)).foregroundColor(.primary)
+                    Button(action: { showCamera = true }) {
+                        Image(systemName: "camera.fill").font(.system(size: 16, weight: .semibold)).foregroundColor(.primary)
                             .padding(8).background(Color(.systemBackground)).clipShape(Circle()).shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 2)
                     }
                 }
@@ -511,8 +666,17 @@ struct FoodView: View {
     func mealEmoji(_ type: String) -> String { switch type { case "breakfast": return "🌅"; case "lunch": return "☀️"; case "dinner": return "🌙"; default: return "🍽️" } }
     func mealColor(_ type: String) -> Color { switch type { case "breakfast": return Color.orange.opacity(0.12); case "lunch": return Color.yellow.opacity(0.12); case "dinner": return Color.blue.opacity(0.12); default: return Color.gray.opacity(0.12) } }
     func formatTime(_ dateStr: String?) -> String {
-        guard let dateStr = dateStr, let date = ISO8601DateFormatter().date(from: dateStr) else { return "" }
-        let f = DateFormatter(); f.timeStyle = .short; return f.string(from: date)
+        guard let dateStr = dateStr else { return "" }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: dateStr) {
+            let f = DateFormatter(); f.timeStyle = .short; return f.string(from: date)
+        }
+        let formatter2 = ISO8601DateFormatter()
+        if let date = formatter2.date(from: dateStr) {
+            let f = DateFormatter(); f.timeStyle = .short; return f.string(from: date)
+        }
+        return ""
     }
 }
 
@@ -556,7 +720,7 @@ struct MealRow: View {
                     }
                 }
             }
-            if let tip = tip {
+            if let tip = tip, !tip.isEmpty {
                 HStack(spacing: 6) { Image(systemName: "sparkle").font(.caption2).foregroundColor(.blue); Text(tip).font(.caption).foregroundColor(.blue) }
                     .padding(.horizontal, 10).padding(.vertical, 6).background(Color.blue.opacity(0.08)).cornerRadius(8)
             }
