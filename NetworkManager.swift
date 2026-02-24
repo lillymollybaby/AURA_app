@@ -44,7 +44,6 @@ struct MealResponse: Codable {
     let eaten_at: String?
     let ai_analysis: String?
     
-    // Совместимость со старым UI
     var protein: Double { proteins }
     var fat: Double { fats }
     var created_at: String? { eaten_at }
@@ -58,11 +57,48 @@ struct MovieResponse: Codable {
     let rating: Double?
     let poster_url: String?
     let watched: Bool?
-    let overview: String?
     let review: String?
     
-    var stableId: Int { tmdb_id ?? id ?? title.hashValue }
-    var yearInt: Int? { if let y = year { return Int(y) } else { return nil } }
+    var stableId: Int { tmdb_id ?? id ?? 0 }
+}
+
+struct CastMember: Codable {
+    let name: String
+    let character: String
+    let profile_url: String?
+}
+
+struct MovieDetails: Codable {
+    let tmdb_id: Int
+    let title: String
+    let original_title: String?
+    let year: String?
+    let rating: Double?
+    let vote_count: Int?
+    let runtime: Int?
+    let overview: String?
+    let poster_url: String?
+    let backdrop_url: String?
+    let genres: [String]?
+    let cast: [CastMember]?
+    let directors: [String]?
+    let writers: [String]?
+    let tagline: String?
+    let original_language: String?
+}
+
+struct MovieWord: Codable, Identifiable {
+    var id: String { word }
+    let word: String
+    let translation: String
+    let context: String?
+    let example: String?
+}
+
+struct MovieWordsResponse: Codable {
+    let title: String
+    let level: String
+    let words: [MovieWord]
 }
 
 struct MovieSearchResult: Codable {
@@ -272,6 +308,22 @@ class NetworkManager {
     
     func getMyMovies() async throws -> [MovieResponse] {
         return try await request("/cinema/my-list")
+    }
+    
+    func getMovieDetails(tmdbId: Int) async throws -> MovieDetails {
+        return try await request("/cinema/movie/\(tmdbId)")
+    }
+    
+    func addToWatchlist(tmdbId: Int) async throws -> [String: String] {
+        return try await request("/cinema/watchlist/\(tmdbId)", method: "POST")
+    }
+    
+    func getMovieWords(tmdbId: Int, level: String = "intermediate") async throws -> MovieWordsResponse {
+        return try await request("/cinema/words/\(tmdbId)?level=\(level)", method: "POST")
+    }
+    
+    func getFilmCritique(tmdbId: Int) async throws -> [String: String] {
+        return try await request("/cinema/film-critic/\(tmdbId)", method: "POST")
     }
     
     func searchMovies(query: String) async throws -> [MovieResponse] {

@@ -72,7 +72,6 @@ struct LogisticsView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 0) {
-                    // Search Bar
                     HStack {
                         Image(systemName: "magnifyingglass").foregroundColor(.secondary)
                         TextField("Search places...", text: $searchQuery)
@@ -85,16 +84,13 @@ struct LogisticsView: View {
                     .padding(.horizontal)
                     .padding(.top, 8)
 
-                    // Traffic Advice
                     if let advice = trafficAdvice {
                         TrafficAdviceBanner(advice: advice)
                             .padding(.horizontal).padding(.top, 12)
                     }
 
-                    // Live Traffic Card (static but pretty)
                     LiveTrafficCard().padding(.horizontal).padding(.top, 12)
 
-                    // Search Results
                     if isSearching {
                         ProgressView("Searching...").padding(.top, 20)
                     } else if !places.isEmpty {
@@ -113,7 +109,6 @@ struct LogisticsView: View {
                             }
                         }
                     } else {
-                        // Default routes when no search
                         VStack(alignment: .leading, spacing: 0) {
                             HStack {
                                 Image(systemName: "arrow.triangle.branch").foregroundColor(.secondary)
@@ -144,7 +139,6 @@ struct LogisticsView: View {
         if let results = try? await NetworkManager.shared.searchPlace(query: searchQuery) {
             places = results
         }
-        // Also get traffic advice for the search
         if let advice = try? await NetworkManager.shared.getTrafficAdvice(destination: searchQuery) {
             trafficAdvice = advice
         }
@@ -406,15 +400,24 @@ struct CinemaView: View {
     @State private var myMovies: [MovieResponse] = []
     @State private var searchQuery = ""
     @State private var searchResults: [MovieResponse] = []
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    // Search
                     HStack {
                         Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                        TextField("Search movies...", text: $searchQuery).onSubmit { Task { await searchMovies() } }
-                    }.padding(10).background(Color(.systemBackground)).cornerRadius(12).shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2).padding(.horizontal)
+                        TextField("Search movies...", text: $searchQuery)
+                            .onSubmit { Task { await searchMovies() } }
+                    }
+                    .padding(10)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+                    .padding(.horizontal)
 
+                    // Genre chips
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             GenreChip(title: "All", isSelected: true)
@@ -425,62 +428,95 @@ struct CinemaView: View {
                         }.padding(.horizontal)
                     }
 
+                    // Search results
                     if !searchResults.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
-                            HStack { Image(systemName: "magnifyingglass").foregroundColor(.secondary); Text("Results").font(.headline) }.padding(.horizontal)
+                            HStack {
+                                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                                Text("Results").font(.headline)
+                            }.padding(.horizontal)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
                                     ForEach(searchResults, id: \.stableId) { m in
-                                        MovieCard(movie: m, color: Color(red: 0.1, green: 0.12, blue: 0.2))
+                                        NavigationLink(destination: MovieDetailView(movie: m)) {
+                                            MovieCard(movie: m, color: Color(red: 0.1, green: 0.12, blue: 0.2))
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
                                     }
                                 }.padding(.horizontal)
                             }
                         }
                     }
 
+                    // Trending
                     if !trending.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
-                            HStack { Image(systemName: "flame.fill").foregroundColor(.secondary); Text("Trending").font(.headline) }.padding(.horizontal)
+                            HStack {
+                                Image(systemName: "flame.fill").foregroundColor(.orange)
+                                Text("Trending").font(.headline)
+                            }.padding(.horizontal)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
                                     ForEach(trending, id: \.stableId) { m in
-                                        MovieCard(movie: m, color: Color(red: 0.1, green: 0.12, blue: 0.25))
+                                        NavigationLink(destination: MovieDetailView(movie: m)) {
+                                            MovieCard(movie: m, color: Color(red: 0.1, green: 0.12, blue: 0.25))
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
                                     }
                                 }.padding(.horizontal)
                             }
                         }
                     }
 
+                    // My List
                     if !myMovies.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
-                            HStack { Image(systemName: "play.circle.fill").foregroundColor(.secondary); Text("My List").font(.headline) }.padding(.horizontal)
+                            HStack {
+                                Image(systemName: "play.circle.fill").foregroundColor(.secondary)
+                                Text("My List").font(.headline)
+                            }.padding(.horizontal)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
                                     ForEach(myMovies, id: \.stableId) { m in
-                                        MovieCard(movie: m, color: Color(red: 0.15, green: 0.1, blue: 0.2))
+                                        NavigationLink(destination: MovieDetailView(movie: m)) {
+                                            MovieCard(movie: m, color: Color(red: 0.15, green: 0.1, blue: 0.2))
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
                                     }
                                 }.padding(.horizontal)
                             }
                         }
                     }
 
+                    // Film Critic AI
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack { Image(systemName: "bubble.left.and.bubble.right.fill").foregroundColor(.secondary); Text("Film Critic AI").font(.headline) }
+                        HStack {
+                            Image(systemName: "bubble.left.and.bubble.right.fill").foregroundColor(.secondary)
+                            Text("Film Critic AI").font(.headline)
+                        }
                         CriticQuestion(category: "Symbolism", question: "Why does the Sunken Place represent?")
                         CriticQuestion(category: "Technique", question: "How does the aspect ratio change in Grand Budapest?")
                         CriticQuestion(category: "Science", question: "What's the Sapir-Whorf hypothesis in Arrival?")
-                    }.padding().background(Color(.systemBackground)).cornerRadius(14).shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2).padding(.horizontal)
+                    }
+                    .padding()
+                    .background(Color(.systemBackground))
+                    .cornerRadius(14)
+                    .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2)
+                    .padding(.horizontal)
 
                     Spacer(minLength: 20)
                 }.padding(.top, 8)
             }
-            .background(Color(.systemGroupedBackground)).navigationTitle("Cinema").navigationBarTitleDisplayMode(.large)
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Cinema")
+            .navigationBarTitleDisplayMode(.large)
         }
         .task {
             if let t = try? await NetworkManager.shared.getTrending() { trending = t }
             if let m = try? await NetworkManager.shared.getMyMovies() { myMovies = m }
         }
     }
+
     func searchMovies() async {
         if let r = try? await NetworkManager.shared.searchMovies(query: searchQuery) { searchResults = r }
     }
@@ -586,7 +622,6 @@ struct FoodView: View {
                         }
                     }.padding().background(Color(.systemBackground)).cornerRadius(14).shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2).padding(.horizontal)
 
-                    // AI Advice
                     if let advice = summary?.ai_advice, !advice.isEmpty {
                         HStack(spacing: 8) {
                             Image(systemName: "sparkles").foregroundColor(.blue)
@@ -610,7 +645,6 @@ struct FoodView: View {
                         }
                     }.padding().background(Color(.systemBackground)).cornerRadius(14).shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2).padding(.horizontal)
 
-                    // Dinner Ideas
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "sparkles").foregroundColor(.secondary)
