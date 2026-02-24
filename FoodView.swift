@@ -543,62 +543,6 @@ struct DinnerIdeasCard: View {
 }
 
 // MARK: - Health Sync Card
-struct HealthSyncCard: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Image(systemName: "heart.text.square.fill").foregroundColor(.red)
-                Text("Health Sync").font(.headline)
-                Spacer()
-                Text("Apple Health").font(.caption).foregroundColor(.secondary)
-            }
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                HealthTile(icon: "figure.walk", color: .red, value: "8,432", label: "Шагов", note: "Цель: 10,000")
-                HealthTile(icon: "flame.fill", color: .orange, value: "380", label: "Акт. ккал", note: "+380 к норме")
-                HealthTile(icon: "bed.double.fill", color: .indigo, value: "7ч 12м", label: "Сон", note: "Хороший отдых")
-                HealthTile(icon: "heart.fill", color: .pink, value: "68", label: "Пульс", note: "уд/мин")
-            }
-
-            // AI рекомендация на основе активности
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles").foregroundColor(.orange)
-                Text("Сегодня много шагов — добавь 200 ккал белка к ужину для восстановления")
-                    .font(.caption).foregroundColor(.secondary)
-            }
-            .padding(10)
-            .background(Color.orange.opacity(0.08))
-            .cornerRadius(10)
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(20)
-        .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
-    }
-}
-
-struct HealthTile: View {
-    let icon: String
-    let color: Color
-    let value: String
-    let label: String
-    let note: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: icon).foregroundColor(color).font(.subheadline)
-                Spacer()
-            }
-            Text(value).font(.title3).fontWeight(.bold)
-            Text(label).font(.caption).foregroundColor(.secondary)
-            Text(note).font(.caption2).foregroundColor(.secondary.opacity(0.7))
-        }
-        .padding(12)
-        .background(color.opacity(0.06))
-        .cornerRadius(14)
-    }
-}
 
 // MARK: - Photo Food Sheet
 struct PhotoFoodSheet: View {
@@ -933,5 +877,62 @@ struct ManualField: View {
                 .cornerRadius(12)
                 .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
         }
+    }
+}
+
+struct HealthSyncCard: View {
+    @ObservedObject var health = HealthKitManager.shared
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "heart.text.square.fill").foregroundColor(.red)
+                Text("Health Sync").font(.headline)
+                Spacer()
+                if !health.isAuthorized {
+                    Button("Подключить") { health.requestAuthorization() }
+                        .font(.caption).foregroundColor(.blue)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1)).cornerRadius(20)
+                } else {
+                    Text("Apple Health ✓").font(.caption2).foregroundColor(.green)
+                }
+            }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                HealthTile(icon: "figure.walk", iconColor: .red, value: health.steps > 0 ? health.stepsFormatted : "—", label: "Шагов", note: health.stepsGoalNote)
+                HealthTile(icon: "flame.fill", iconColor: .orange, value: "\(Int(health.activeCalories))", label: "Акт. ккал", note: health.calorieAdjustment > 0 ? "+\(health.calorieAdjustment) к норме" : "В норме")
+                HealthTile(icon: "bed.double.fill", iconColor: .indigo, value: health.sleepHours > 0 ? health.sleepFormatted : "—", label: "Сон", note: health.sleepHours >= 7 ? "Хороший отдых" : "Нет данных")
+                HealthTile(icon: "heart.fill", iconColor: .pink, value: health.heartRateFormatted, label: "Пульс", note: "уд/мин")
+            }
+            if health.isAuthorized {
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles").foregroundColor(.orange)
+                    Text(health.healthAdvice).font(.caption).foregroundColor(.secondary)
+                }
+                .padding(10).background(Color.orange.opacity(0.08)).cornerRadius(10)
+            }
+        }
+        .padding().background(Color(.systemBackground)).cornerRadius(20)
+        .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
+        .onAppear { if health.isAuthorized { health.fetchAll() } }
+    }
+}
+
+struct HealthTile: View {
+    let icon: String
+    let iconColor: Color
+    let value: String
+    let label: String
+    let note: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: icon).foregroundColor(iconColor).font(.subheadline)
+            Text(value).font(.title3).fontWeight(.bold)
+            Text(label).font(.caption).foregroundColor(.secondary)
+            if !note.isEmpty { Text(note).font(.caption2).foregroundColor(.secondary.opacity(0.7)) }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(iconColor.opacity(0.06))
+        .cornerRadius(14)
     }
 }

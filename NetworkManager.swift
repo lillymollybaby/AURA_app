@@ -386,4 +386,24 @@ class NetworkManager {
         let encoded = destination.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? destination
         return try await request("/logistics/traffic-advice?destination=\(encoded)")
     }
+   
+    func scanProduct(imageData: Data) async throws -> ScanResult {
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: URL(string: "\(BASE_URL)/food/scan-product")!)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = AuthStorage.shared.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"label.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+        let (data, _) = try await URLSession.shared.data(for: request)
+        return try JSONDecoder().decode(ScanResult.self, from: data)
+    }
+    
 }
