@@ -1,26 +1,35 @@
 import SwiftUI
 
 struct RootView: View {
+    @State private var showSplash = true
     @State private var isLoggedIn: Bool = AuthStorage.shared.token != nil
     @State private var showOnboarding: Bool = !UserDefaults.standard.bool(forKey: "onboarding_completed")
 
     var body: some View {
-        Group {
-            if showOnboarding && !isLoggedIn {
-                OnboardingView {
-                    showOnboarding = false
+        ZStack {
+            if showSplash {
+                SplashView {
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        showSplash = false
+                    }
                 }
-            } else if isLoggedIn {
-                ContentView()
-                    .onReceive(NotificationCenter.default.publisher(for: .didLogout)) { _ in
-                        isLoggedIn = false
-                        showOnboarding = false
-                    }
+                .zIndex(1)
             } else {
-                AuthView()
-                    .onReceive(NotificationCenter.default.publisher(for: .didLogin)) { _ in
-                        isLoggedIn = true
+                if showOnboarding && !isLoggedIn {
+                    OnboardingView {
+                        withAnimation { showOnboarding = false }
                     }
+                } else if isLoggedIn {
+                    ContentView()
+                        .onReceive(NotificationCenter.default.publisher(for: .didLogout)) { _ in
+                            isLoggedIn = false
+                        }
+                } else {
+                    AuthView()
+                        .onReceive(NotificationCenter.default.publisher(for: .didLogin)) { _ in
+                            isLoggedIn = true
+                        }
+                }
             }
         }
         .onAppear {

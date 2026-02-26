@@ -33,7 +33,7 @@ struct DailySummaryResponse: Codable {
     var meals_count: Int { meals?.count ?? 0 }
 }
 
-struct MealResponse: Codable {
+struct MealResponse: Codable, Identifiable {
     let id: Int
     let name: String
     let calories: Double
@@ -49,7 +49,7 @@ struct MealResponse: Codable {
     var created_at: String? { eaten_at }
 }
 
-struct MovieResponse: Codable {
+struct MovieResponse: Codable, Identifiable {
     let id: Int?
     let tmdb_id: Int?
     let title: String
@@ -127,6 +127,10 @@ struct PlaceResult: Codable {
     let lat: Double?
     let lon: Double?
     let type: String?
+    let rating: Double?
+    let working_hours: String?
+    let phone: String?
+    let distance_meters: Int?
 }
 
 struct PlaceSearchResponse: Codable {
@@ -150,6 +154,7 @@ struct DinnerIdeasResponse: Codable {
     let ideas: String
     let calories_remaining: Double
 }
+
 
 // MARK: - Auth Storage
 class AuthStorage {

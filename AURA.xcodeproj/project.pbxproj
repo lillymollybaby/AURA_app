@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7D117DE72F4F821B00587E83 /* MovieQuizView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D117DE62F4F821600587E83 /* MovieQuizView.swift */; };
+		7D117DE92F4F845E00587E83 /* PlatformConnectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D117DE82F4F845C00587E83 /* PlatformConnectSheet.swift */; };
 		7D2AE39D2F4E4B570052C12F /* LogisticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE39C2F4E4B540052C12F /* LogisticsView.swift */; };
 		7D2AE39F2F4E4F800052C12F /* Onboardingview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE39E2F4E4F780052C12F /* Onboardingview.swift */; };
 		7D2AE3A12F4E4FA00052C12F /* Languagesview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE3A02F4E4F9E0052C12F /* Languagesview.swift */; };
@@ -14,6 +16,7 @@
 		7D2AE3A52F4E4FCD0052C12F /* Rootview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE3A42F4E4FC90052C12F /* Rootview.swift */; };
 		7D2AE3A72F4E52330052C12F /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE3A62F4E522D0052C12F /* HealthKitManager.swift */; };
 		7D2AE3A92F4E52670052C12F /* ScanDecideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE3A82F4E52650052C12F /* ScanDecideView.swift */; };
+		7D2AE3AE2F4E674B0052C12F /* MovieDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE3AD2F4E674B0052C12F /* MovieDetailView.swift */; };
 		7D5ADE3F2F4CACEC00EB06DB /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5ADE3E2F4CACEC00EB06DB /* AuthView.swift */; };
 		7D5ADE492F4CB69500EB06DB /* NetworkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5ADE482F4CB69500EB06DB /* NetworkManager.swift */; };
 		7D5ADE512F4CB73200EB06DB /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5ADE502F4CB73200EB06DB /* ContentView.swift */; };
@@ -40,6 +43,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		7D117DE62F4F821600587E83 /* MovieQuizView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovieQuizView.swift; sourceTree = "<group>"; };
+		7D117DE82F4F845C00587E83 /* PlatformConnectSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformConnectSheet.swift; sourceTree = "<group>"; };
 		7D2AE39C2F4E4B540052C12F /* LogisticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogisticsView.swift; sourceTree = "<group>"; };
 		7D2AE39E2F4E4F780052C12F /* Onboardingview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboardingview.swift; sourceTree = "<group>"; };
 		7D2AE3A02F4E4F9E0052C12F /* Languagesview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Languagesview.swift; sourceTree = "<group>"; };
@@ -47,6 +52,7 @@
 		7D2AE3A42F4E4FC90052C12F /* Rootview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rootview.swift; sourceTree = "<group>"; };
 		7D2AE3A62F4E522D0052C12F /* HealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManager.swift; sourceTree = "<group>"; };
 		7D2AE3A82F4E52650052C12F /* ScanDecideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanDecideView.swift; sourceTree = "<group>"; };
+		7D2AE3AD2F4E674B0052C12F /* MovieDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovieDetailView.swift; sourceTree = "<group>"; };
 		7D5ADE0E2F4C7B7200EB06DB /* AURA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AURA.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7D5ADE1D2F4C7B7300EB06DB /* AURATests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AURATests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7D5ADE272F4C7B7300EB06DB /* AURAUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AURAUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -108,12 +114,15 @@
 		7D5ADE052F4C7B7200EB06DB = {
 			isa = PBXGroup;
 			children = (
+				7D117DE82F4F845C00587E83 /* PlatformConnectSheet.swift */,
+				7D117DE62F4F821600587E83 /* MovieQuizView.swift */,
 				7D2AE3A82F4E52650052C12F /* ScanDecideView.swift */,
 				7D2AE3A62F4E522D0052C12F /* HealthKitManager.swift */,
 				7D2AE3A42F4E4FC90052C12F /* Rootview.swift */,
 				7D2AE3A22F4E4FB00052C12F /* Notificationmanager.swift */,
 				7D2AE3A02F4E4F9E0052C12F /* Languagesview.swift */,
 				7D2AE39E2F4E4F780052C12F /* Onboardingview.swift */,
+				7D2AE3AD2F4E674B0052C12F /* MovieDetailView.swift */,
 				7D2AE39C2F4E4B540052C12F /* LogisticsView.swift */,
 				7DB4E4572F4E248E00A67A48 /* ProfileView.swift */,
 				7DB4E4532F4E009E00A67A48 /* CinemaView .swift */,
@@ -274,7 +283,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7D2AE3AE2F4E674B0052C12F /* MovieDetailView.swift in Sources */,
 				7DB4E4582F4E249800A67A48 /* ProfileView.swift in Sources */,
+				7D117DE92F4F845E00587E83 /* PlatformConnectSheet.swift in Sources */,
+				7D117DE72F4F821B00587E83 /* MovieQuizView.swift in Sources */,
 				7D2AE3A92F4E52670052C12F /* ScanDecideView.swift in Sources */,
 				7D5ADE492F4CB69500EB06DB /* NetworkManager.swift in Sources */,
 				7D2AE3A32F4E4FB90052C12F /* Notificationmanager.swift in Sources */,
@@ -446,10 +458,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = ALZDF567P7;
+				DEVELOPMENT_TEAM = CVR5529SB8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AURA/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Нужно чтобы рассчитать маршрут от твоего текущего местоположения";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -460,7 +473,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = lillymollybaby.AURA;
+				PRODUCT_BUNDLE_IDENTIFIER = sakura.aura.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -479,10 +492,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = ALZDF567P7;
+				DEVELOPMENT_TEAM = CVR5529SB8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AURA/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Нужно чтобы рассчитать маршрут от твоего текущего местоположения";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -493,7 +507,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = lillymollybaby.AURA;
+				PRODUCT_BUNDLE_IDENTIFIER = sakura.aura.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

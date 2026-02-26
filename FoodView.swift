@@ -1,11 +1,11 @@
 import SwiftUI
 import PhotosUI
 
-// MARK: - FOOD VIEW
 struct FoodView: View {
     @State private var summary: DailySummaryResponse?
     @State private var meals: [MealResponse] = []
     @State private var showAddSheet = false
+    @State private var showScanSheet = false
     @State private var dinnerIdeas: String?
     @State private var isLoadingIdeas = false
     @State private var showDinnerIdeas = false
@@ -16,114 +16,145 @@ struct FoodView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 16) {
+        NavigationStack {
+            List {
+                // MARK: Calorie Ring
+                Section {
+                    CalorieRingRow(summary: summary, progress: progress)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
 
-                    // MARK: Hero Calorie Card
-                    CalorieHeroCard(summary: summary, progress: progress)
-                        .padding(.horizontal)
+                // MARK: Macros
+                Section {
+                    MacroRow(label: "Белки", value: summary?.total_proteins ?? 0, goal: 150, color: .blue, unit: "г")
+                    MacroRow(label: "Углеводы", value: summary?.total_carbs ?? 0, goal: 250, color: .orange, unit: "г")
+                    MacroRow(label: "Жиры", value: summary?.total_fats ?? 0, goal: 70, color: .pink, unit: "г")
+                } header: {
+                    Text("Макронутриенты")
+                }
 
-                    // MARK: Macro Bars
-                    MacroGridCard(summary: summary)
-                        .padding(.horizontal)
-
-                    // MARK: AI Advice
-                    if let advice = summary?.ai_advice, !advice.isEmpty {
-                        AIAdviceBanner(text: advice)
-                            .padding(.horizontal)
+                // MARK: Quick Add
+                Section {
+                    Button {
+                        showAddSheet = true
+                    } label: {
+                        Label("Сфотографировать еду", systemImage: "camera")
                     }
 
-                    // MARK: Add Food Buttons
-                    HStack(spacing: 12) {
-                        // Photo button
+                    NavigationLink {
+                        ManualAddFoodView(onAdd: { _ in Task { await refreshData() } })
+                    } label: {
+                        Label("Добавить вручную", systemImage: "square.and.pencil")
+                    }
+
+                    Button {
+                        showScanSheet = true
+                    } label: {
+                        Label("Сканировать этикетку", systemImage: "barcode.viewfinder")
+                    }
+                } header: {
+                    Text("Добавить")
+                }
+
+                // MARK: AI Advice
+                if let advice = summary?.ai_advice, !advice.isEmpty {
+                    Section {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "sparkles")
+                                .foregroundStyle(.yellow)
+                                .font(.body)
+                            Text(advice)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    } header: {
+                        Text("Совет дня")
+                    }
+                }
+
+                // MARK: Today's Meals
+                if !meals.isEmpty {
+                    Section {
+                        ForEach(meals) { meal in
+                            MealListRow(meal: meal)
+                        }
+                        .onDelete { indexSet in
+                            for i in indexSet {
+                                let id = meals[i].id
+                                Task {
+                                    try? await NetworkManager.shared.deleteMeal(id: id)
+                                    await refreshData()
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Сегодня")
+                    }
+                }
+
+                // MARK: Dinner Ideas
+                Section {
+                    if let ideas = dinnerIdeas {
+                        Text(ideas)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
                         Button {
-                            showAddSheet = true
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "camera.fill")
-                                    .font(.system(size: 16, weight: .semibold))
-                                Text("Сфотографировать")
-                                    .font(.subheadline).fontWeight(.semibold)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(
-                                LinearGradient(
-                                    colors: [Color(red:0.2,green:0.5,blue:1.0), Color(red:0.4,green:0.3,blue:1.0)],
-                                    startPoint: .leading, endPoint: .trailing
-                                )
-                            )
-                            .foregroundColor(.white)
-                            .cornerRadius(14)
-                            .shadow(color: Color.blue.opacity(0.3), radius: 8, x: 0, y: 4)
-                        }
-
-                        // Manual button
-                        NavigationLink(destination: ManualAddFoodView(onAdd: { _ in
-                            Task { await refreshData() }
-                        })) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 16, weight: .semibold))
-                                Text("Вручную")
-                                    .font(.subheadline).fontWeight(.semibold)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color(.systemBackground))
-                            .foregroundColor(.primary)
-                            .cornerRadius(14)
-                            .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 2)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                    .padding(.horizontal)
-
-                    // MARK: Today's Meals
-                    TodayMealsCard(meals: meals, onDelete: { id in
-                        Task {
-                            try? await NetworkManager.shared.deleteMeal(id: id)
-                            await refreshData()
-                        }
-                    })
-                    .padding(.horizontal)
-
-                    // MARK: Dinner Ideas
-                    DinnerIdeasCard(
-                        ideas: dinnerIdeas,
-                        isLoading: isLoadingIdeas,
-                        isExpanded: $showDinnerIdeas,
-                        onLoad: {
                             isLoadingIdeas = true
                             Task {
-                                if let result = try? await NetworkManager.shared.getDinnerIdeas() {
-                                    dinnerIdeas = result.ideas
+                                if let r = try? await NetworkManager.shared.getDinnerIdeas() {
+                                    dinnerIdeas = r.ideas
                                 }
                                 isLoadingIdeas = false
                             }
+                        } label: {
+                            if isLoadingIdeas {
+                                HStack {
+                                    ProgressView().padding(.trailing, 4)
+                                    Text("Генерируем...")
+                                }
+                            } else {
+                                Label("Идеи для ужина от AI", systemImage: "wand.and.stars")
+                            }
                         }
-                    )
-                    .padding(.horizontal)
-
-                    // MARK: Health Sync
-                    HealthSyncCard()
-                        .padding(.horizontal)
-
-                    Spacer(minLength: 30)
+                        .disabled(isLoadingIdeas)
+                    }
+                } header: {
+                    Text("Ужин")
                 }
-                .padding(.top, 8)
+
+                // MARK: Health Sync
+                Section {
+                    HealthSyncCard()
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                } header: {
+                    Text("Apple Health")
+                }
             }
-            .background(Color(.systemGroupedBackground))
             .navigationTitle("Food")
-            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showScanSheet = true
+                    } label: {
+                        Image(systemName: "barcode.viewfinder")
+                    }
+                }
+            }
+            .sheet(isPresented: $showAddSheet, onDismiss: {
+                Task { await refreshData() }
+            }) {
+                PhotoFoodSheet()
+            }
+            .sheet(isPresented: $showScanSheet) {
+                ScanDecideView()
+            }
+            .task { await refreshData() }
+            .refreshable { await refreshData() }
         }
-        .sheet(isPresented: $showAddSheet, onDismiss: {
-            Task { await refreshData() }
-        }) {
-            PhotoFoodSheet()
-        }
-        .task { await refreshData() }
     }
 
     func refreshData() async {
@@ -134,8 +165,8 @@ struct FoodView: View {
     }
 }
 
-// MARK: - Calorie Hero Card
-struct CalorieHeroCard: View {
+// MARK: - Calorie Ring Row
+struct CalorieRingRow: View {
     let summary: DailySummaryResponse?
     let progress: Double
 
@@ -144,407 +175,135 @@ struct CalorieHeroCard: View {
     var calLeft: Int { max(0, calGoal - calEaten) }
 
     var ringColor: Color {
-        if progress > 0.9 { return .orange }
-        if progress > 0.7 { return .blue }
+        if progress > 0.95 { return .orange }
+        if progress > 0.75 { return .blue }
         return .green
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            HStack(alignment: .center, spacing: 24) {
-                // Ring
-                ZStack {
-                    Circle()
-                        .stroke(Color(.systemGray5), lineWidth: 10)
-                        .frame(width: 100, height: 100)
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(
-                            AngularGradient(
-                                colors: [ringColor.opacity(0.6), ringColor],
-                                center: .center
-                            ),
-                            style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                        )
-                        .frame(width: 100, height: 100)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.spring(response: 0.8), value: progress)
-
-                    VStack(spacing: 1) {
-                        Text("\(calEaten)")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                        Text("ккал")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                // Stats
-                VStack(alignment: .leading, spacing: 10) {
-                    CalStatRow(icon: "target", color: .blue, label: "Цель", value: "\(calGoal) ккал")
-                    CalStatRow(icon: "flame.fill", color: .orange, label: "Съедено", value: "\(calEaten) ккал")
-                    CalStatRow(icon: "minus.circle.fill", color: calLeft == 0 ? .red : .green, label: "Осталось", value: "\(calLeft) ккал")
-                }
-
-                Spacer()
-            }
-
-            // Visual progress bar
-            VStack(alignment: .leading, spacing: 6) {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color(.systemGray5))
-                            .frame(height: 8)
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(LinearGradient(
-                                colors: [ringColor.opacity(0.7), ringColor],
-                                startPoint: .leading, endPoint: .trailing
-                            ))
-                            .frame(width: geo.size.width * min(progress, 1.0), height: 8)
-                            .animation(.spring(response: 0.8), value: progress)
-                    }
-                }
-                .frame(height: 8)
-
-                HStack {
-                    Text("0").font(.caption2).foregroundColor(.secondary)
-                    Spacer()
-                    Text("\(Int(progress * 100))%").font(.caption2).bold().foregroundColor(ringColor)
-                    Spacer()
-                    Text("\(calGoal)").font(.caption2).foregroundColor(.secondary)
-                }
-            }
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(20)
-        .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
-    }
-}
-
-struct CalStatRow: View {
-    let icon: String
-    let color: Color
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .foregroundColor(color)
-                .font(.caption)
-                .frame(width: 16)
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text(value)
-                .font(.caption)
-                .fontWeight(.semibold)
-        }
-    }
-}
-
-// MARK: - Macro Grid Card
-struct MacroGridCard: View {
-    let summary: DailySummaryResponse?
-
-    var body: some View {
-        VStack(spacing: 14) {
-            HStack {
-                Text("Макронутриенты").font(.headline)
-                Spacer()
-                Text("сегодня").font(.caption).foregroundColor(.secondary)
-            }
-
-            HStack(spacing: 12) {
-                MacroCircle(
-                    value: Int(summary?.total_proteins ?? 0),
-                    goal: 120,
-                    label: "Белки",
-                    unit: "г",
-                    color: .blue
-                )
-                MacroCircle(
-                    value: Int(summary?.total_carbs ?? 0),
-                    goal: 250,
-                    label: "Углеводы",
-                    unit: "г",
-                    color: .orange
-                )
-                MacroCircle(
-                    value: Int(summary?.total_fats ?? 0),
-                    goal: 70,
-                    label: "Жиры",
-                    unit: "г",
-                    color: .purple
-                )
-
-                // Вода (статик)
-                MacroCircle(
-                    value: 6,
-                    goal: 8,
-                    label: "Вода",
-                    unit: "ст",
-                    color: .cyan
-                )
-            }
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(20)
-        .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
-    }
-}
-
-struct MacroCircle: View {
-    let value: Int
-    let goal: Int
-    let label: String
-    let unit: String
-    let color: Color
-
-    var progress: Double { goal > 0 ? min(Double(value) / Double(goal), 1.0) : 0 }
-
-    var body: some View {
-        VStack(spacing: 6) {
+        HStack(spacing: 24) {
+            // Ring
             ZStack {
                 Circle()
-                    .stroke(color.opacity(0.15), lineWidth: 5)
-                    .frame(width: 52, height: 52)
+                    .stroke(Color(.systemFill), lineWidth: 12)
+                    .frame(width: 90, height: 90)
                 Circle()
                     .trim(from: 0, to: progress)
-                    .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                    .frame(width: 52, height: 52)
+                    .stroke(ringColor, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                    .frame(width: 90, height: 90)
                     .rotationEffect(.degrees(-90))
-
-                VStack(spacing: 0) {
-                    Text("\(value)").font(.system(size: 13, weight: .bold))
-                    Text(unit).font(.system(size: 8)).foregroundColor(.secondary)
+                    .animation(.spring(response: 0.8), value: progress)
+                VStack(spacing: 1) {
+                    Text("\(calEaten)")
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    Text("ккал")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
-            Text(label).font(.caption2).foregroundColor(.secondary).lineLimit(1)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
 
-// MARK: - AI Advice Banner
-struct AIAdviceBanner: View {
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 36, height: 36)
-                Image(systemName: "sparkles")
-                    .foregroundColor(.white)
-                    .font(.subheadline)
+            // Stats
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "target").foregroundStyle(.blue).font(.caption)
+                    Text("Цель: \(calGoal) ккал").font(.subheadline)
+                }
+                HStack {
+                    Image(systemName: "checkmark.circle").foregroundStyle(.green).font(.caption)
+                    Text("Съедено: \(calEaten) ккал").font(.subheadline)
+                }
+                HStack {
+                    Image(systemName: calLeft == 0 ? "exclamationmark.circle" : "minus.circle")
+                        .foregroundStyle(calLeft == 0 ? .orange : .secondary).font(.caption)
+                    Text("Осталось: \(calLeft) ккал").font(.subheadline)
+                        .foregroundStyle(calLeft == 0 ? .orange : .primary)
+                }
             }
-            Text(text)
-                .font(.subheadline)
-                .foregroundColor(.primary)
-                .lineLimit(3)
             Spacer()
         }
         .padding()
-        .background(
-            LinearGradient(
-                colors: [Color.blue.opacity(0.06), Color.purple.opacity(0.06)],
-                startPoint: .leading, endPoint: .trailing
-            )
-        )
+        .background(Color(.systemBackground))
         .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.blue.opacity(0.1), lineWidth: 1)
-        )
+        .padding(.horizontal)
+        .padding(.vertical, 8)
     }
 }
 
-// MARK: - Today Meals Card
-struct TodayMealsCard: View {
-    let meals: [MealResponse]
-    let onDelete: (Int) -> Void
+// MARK: - Macro Row
+struct MacroRow: View {
+    let label: String
+    let value: Double
+    let goal: Double
+    let color: Color
+    let unit: String
+
+    var progress: Double { min(value / goal, 1.0) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Image(systemName: "fork.knife").foregroundColor(.secondary)
-                Text("Сегодня").font(.headline)
+                Text(label).font(.subheadline)
                 Spacer()
-                Text("\(meals.count) приёмов").font(.caption).foregroundColor(.secondary)
+                Text("\(Int(value)) / \(Int(goal)) \(unit)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
-
-            if meals.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "tray").font(.title2).foregroundColor(.secondary.opacity(0.4))
-                    Text("Ничего не добавлено").font(.subheadline).foregroundColor(.secondary)
-                    Text("Сфотографируй еду или добавь вручную").font(.caption).foregroundColor(.secondary.opacity(0.7))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-            } else {
-                ForEach(Array(meals.enumerated()), id: \.element.id) { idx, meal in
-                    if idx > 0 { Divider() }
-                    FoodMealRow(meal: meal, onDelete: { onDelete(meal.id) })
-                }
-            }
+            ProgressView(value: progress)
+                .tint(color)
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(20)
-        .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
+        .padding(.vertical, 2)
     }
 }
 
-struct FoodMealRow: View {
+// MARK: - Meal List Row
+struct MealListRow: View {
     let meal: MealResponse
-    let onDelete: () -> Void
-    @State private var showDelete = false
 
     var mealIcon: String {
         switch meal.meal_type {
-        case "breakfast": return "🌅"
-        case "lunch": return "☀️"
-        case "dinner": return "🌙"
-        default: return "🍽️"
-        }
-    }
-
-    var mealColor: Color {
-        switch meal.meal_type {
-        case "breakfast": return .orange
-        case "lunch": return .yellow
-        case "dinner": return .indigo
-        default: return .gray
+        case "breakfast": return "sunrise"
+        case "lunch": return "sun.max"
+        case "dinner": return "moon.stars"
+        default: return "fork.knife"
         }
     }
 
     var body: some View {
         HStack(spacing: 12) {
-            // Icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(mealColor.opacity(0.12))
-                    .frame(width: 44, height: 44)
-                Text(mealIcon).font(.title3)
-            }
+            Image(systemName: mealIcon)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 32)
 
-            // Info
-            VStack(alignment: .leading, spacing: 3) {
-                Text(meal.name).font(.subheadline).fontWeight(.semibold).lineLimit(1)
-                HStack(spacing: 8) {
-                    Text("\(Int(meal.calories)) ккал")
-                        .font(.caption).fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                    Text("Б \(Int(meal.proteins))г")
-                        .font(.caption).foregroundColor(.blue)
-                    Text("У \(Int(meal.carbs))г")
-                        .font(.caption).foregroundColor(.orange)
-                    Text("Ж \(Int(meal.fats))г")
-                        .font(.caption).foregroundColor(.purple)
-                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(meal.name)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
                 if let tip = meal.ai_analysis, !tip.isEmpty {
-                    Text("✨ \(tip)").font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                    Text(tip)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
 
             Spacer()
 
-            // Delete
-            Button {
-                withAnimation { showDelete.toggle() }
-            } label: {
-                Image(systemName: "trash")
-                    .font(.caption)
-                    .foregroundColor(.red.opacity(0.6))
-                    .padding(8)
-                    .background(Color.red.opacity(0.08))
-                    .cornerRadius(8)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(Int(meal.calories))")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                Text("ккал")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
-            .onTapGesture { onDelete() }
         }
+        .padding(.vertical, 2)
     }
 }
 
-// MARK: - Dinner Ideas Card
-struct DinnerIdeasCard: View {
-    let ideas: String?
-    let isLoading: Bool
-    @Binding var isExpanded: Bool
-    let onLoad: () -> Void
-
-    let staticIdeas = [
-        ("🐟", "Лосось с киноа", "Мало белка сегодня", "520 ккал"),
-        ("🍠", "Батат с овощами", "Сложные углеводы", "380 ккал"),
-        ("🥑", "Авокадо тост", "Полезные жиры", "310 ккал"),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                HStack(spacing: 8) {
-                    Image(systemName: "moon.stars.fill").foregroundColor(.indigo)
-                    Text("Идеи для ужина").font(.headline)
-                }
-                Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.3)) { isExpanded.toggle() }
-                    if ideas == nil && !isLoading { onLoad() }
-                } label: {
-                    HStack(spacing: 4) {
-                        if isLoading {
-                            ProgressView().scaleEffect(0.7)
-                        } else {
-                            Text(isExpanded ? "Скрыть" : "AI совет")
-                                .font(.caption).foregroundColor(.indigo)
-                            Image(systemName: isExpanded ? "chevron.up" : "sparkles")
-                                .font(.caption).foregroundColor(.indigo)
-                        }
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Color.indigo.opacity(0.1))
-                    .cornerRadius(20)
-                }
-            }
-
-            if isExpanded, let ideas = ideas {
-                Text(ideas)
-                    .font(.subheadline).foregroundColor(.secondary)
-                    .padding()
-                    .background(Color.indigo.opacity(0.05))
-                    .cornerRadius(12)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            } else {
-                ForEach(staticIdeas, id: \.0) { idea in
-                    HStack(spacing: 12) {
-                        Text(idea.0).font(.title2).frame(width: 40, height: 40)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(idea.1).font(.subheadline).fontWeight(.semibold)
-                            Text(idea.2).font(.caption).foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Text(idea.3).font(.caption).fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color(.systemGray6)).cornerRadius(8)
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(20)
-        .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
-    }
-}
-
-// MARK: - Health Sync Card
-
-// MARK: - Photo Food Sheet
 struct PhotoFoodSheet: View {
     @Environment(\.dismiss) var dismiss
     @State private var selectedItem: PhotosPickerItem? = nil

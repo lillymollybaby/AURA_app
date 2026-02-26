@@ -3,12 +3,13 @@ import PhotosUI
 
 // MARK: - Scan Result Model
 struct ScanResult: Codable {
-    let product_name: String
-    let verdict: String // "safe", "caution", "avoid"
-    let score: Double
-    let warnings: [String]
-    let positives: [String]
-    let summary: String
+    let name: String
+    let calories: Double
+    let proteins: Double
+    let fats: Double
+    let carbs: Double
+    let serving_size: String?
+    let ingredients_summary: String?
 }
 
 // MARK: - Scan & Decide View
@@ -119,7 +120,6 @@ struct ScanDecideView: View {
                     if scanResult == nil && !isScanning {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("На что обращать внимание").font(.headline)
-
                             TipRow(icon: "exclamationmark.triangle.fill", color: .red, tip: "E621, E631 — усилители вкуса")
                             TipRow(icon: "exclamationmark.triangle.fill", color: .orange, tip: "Трансжиры — hydrogenated oil")
                             TipRow(icon: "drop.fill", color: .blue, tip: "Натрий > 600мг на порцию")
@@ -173,115 +173,86 @@ struct ScanDecideView: View {
 struct ScanResultCard: View {
     let result: ScanResult
 
-    var verdictColor: Color {
-        switch result.verdict {
-        case "safe": return .green
-        case "caution": return .orange
-        case "avoid": return .red
-        default: return .gray
-        }
-    }
-
-    var verdictEmoji: String {
-        switch result.verdict {
-        case "safe": return "✅"
-        case "caution": return "⚠️"
-        case "avoid": return "🚫"
-        default: return "❓"
-        }
-    }
-
-    var verdictText: String {
-        switch result.verdict {
-        case "safe": return "Можно есть"
-        case "caution": return "С осторожностью"
-        case "avoid": return "Лучше избегать"
-        default: return "Неизвестно"
-        }
+    var calorieColor: Color {
+        if result.calories < 200 { return .green }
+        if result.calories < 400 { return .orange }
+        return .red
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
 
-            // Product name + verdict
+            // Product name
             HStack(spacing: 14) {
-                Text(verdictEmoji).font(.system(size: 36))
+                ZStack {
+                    Circle()
+                        .fill(calorieColor.opacity(0.12))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: "leaf.fill")
+                        .foregroundColor(calorieColor)
+                        .font(.title3)
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(result.product_name).font(.title3).bold().lineLimit(2)
-                    Text(verdictText)
-                        .font(.subheadline).fontWeight(.semibold)
-                        .foregroundColor(verdictColor)
+                    Text(result.name).font(.title3).bold().lineLimit(2)
+                    if let serving = result.serving_size {
+                        Text("Порция: \(serving)").font(.caption).foregroundColor(.secondary)
+                    }
                 }
 
                 Spacer()
 
-                // Score circle
-                ZStack {
-                    Circle()
-                        .stroke(verdictColor.opacity(0.2), lineWidth: 6)
-                        .frame(width: 56, height: 56)
-                    Circle()
-                        .trim(from: 0, to: result.score / 10)
-                        .stroke(verdictColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                        .frame(width: 56, height: 56)
-                        .rotationEffect(.degrees(-90))
-                    VStack(spacing: 0) {
-                        Text(String(format: "%.1f", result.score))
-                            .font(.system(size: 14, weight: .bold))
-                        Text("/10").font(.system(size: 8)).foregroundColor(.secondary)
-                    }
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(Int(result.calories))").font(.system(size: 28, weight: .bold)).foregroundColor(calorieColor)
+                    Text("ккал").font(.caption).foregroundColor(.secondary)
                 }
             }
 
             Divider()
 
-            // Summary
-            Text(result.summary)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .lineSpacing(3)
-
-            // Warnings
-            if !result.warnings.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("⚠️ Предупреждения").font(.subheadline).bold().foregroundColor(.red)
-                    ForEach(result.warnings, id: \.self) { warning in
-                        HStack(spacing: 8) {
-                            Image(systemName: "xmark.circle.fill").foregroundColor(.red).font(.caption)
-                            Text(warning).font(.caption).foregroundColor(.secondary)
-                        }
-                    }
-                }
-                .padding()
-                .background(Color.red.opacity(0.06))
-                .cornerRadius(12)
+            // Macros
+            HStack(spacing: 0) {
+                MacroStatScan(value: Int(result.proteins), label: "Белки", unit: "г", color: .blue)
+                Divider().frame(height: 40)
+                MacroStatScan(value: Int(result.carbs), label: "Углеводы", unit: "г", color: .orange)
+                Divider().frame(height: 40)
+                MacroStatScan(value: Int(result.fats), label: "Жиры", unit: "г", color: .purple)
             }
 
-            // Positives
-            if !result.positives.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("✅ Плюсы").font(.subheadline).bold().foregroundColor(.green)
-                    ForEach(result.positives, id: \.self) { positive in
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.caption)
-                            Text(positive).font(.caption).foregroundColor(.secondary)
-                        }
-                    }
+            // Ingredients summary
+            if let summary = result.ingredients_summary, !summary.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("🔬 Состав").font(.subheadline).bold()
+                    Text(summary).font(.caption).foregroundColor(.secondary).lineSpacing(3)
                 }
                 .padding()
-                .background(Color.green.opacity(0.06))
+                .background(Color(.systemGray6))
                 .cornerRadius(12)
             }
         }
         .padding()
         .background(Color(.systemBackground))
         .cornerRadius(20)
-        .shadow(color: verdictColor.opacity(0.15), radius: 10, x: 0, y: 4)
+        .shadow(color: calorieColor.opacity(0.15), radius: 10, x: 0, y: 4)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(verdictColor.opacity(0.2), lineWidth: 1.5)
+                .stroke(calorieColor.opacity(0.2), lineWidth: 1.5)
         )
+    }
+}
+
+struct MacroStatScan: View {
+    let value: Int
+    let label: String
+    let unit: String
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("\(value)\(unit)").font(.title3).bold().foregroundColor(color)
+            Text(label).font(.caption2).foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
