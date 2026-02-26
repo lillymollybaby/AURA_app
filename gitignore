@@ -1,0 +1,118 @@
+# ===========================
+# Xcode
+# ===========================
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+# Build outputs
+build/
+DerivedData/
+*.o
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Archives
+*.xcarchive
+
+# Previews
+PreviewContent/
+
+# ===========================
+# Swift Package Manager
+# ===========================
+.build/
+.swiftpm/
+*.resolved
+# Раскомментируй если используешь SPM без Xcode Cloud:
+# Package.resolved
+
+# ===========================
+# CocoaPods
+# ===========================
+Pods/
+*.xcworkspace
+!default.xcworkspace
+Podfile.lock
+
+# ===========================
+# Carthage
+# ===========================
+Carthage/Build/
+Carthage/Checkouts/
+
+# ===========================
+# Fastlane
+# ===========================
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# ===========================
+# macOS мусор
+# ===========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# ===========================
+# IDE / редакторы
+# ===========================
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
+
+# ===========================
+# Секреты — НИКОГДА в git!
+# ===========================
+*.env
+.env
+.env.local
+.env.production
+Secrets.swift
+Secrets.plist
+GoogleService-Info.plist
+AuthConfig.swift
+*APIKey*
+*apikey*
+*secret*
+*Secret*
+*credentials*
+*Credentials*
+
+# ===========================
+# TestFlight / Distribution
+# ===========================
+*.mobileprovision
+*.p12
+*.p8
+*.cer
+ExportOptions.plist
+
+# ===========================
+# Simulator снапшоты
+# ===========================
+*.siminfo
+
+# ===========================
+# Логи
+# ===========================
+*.log
+npm-debug.log*
