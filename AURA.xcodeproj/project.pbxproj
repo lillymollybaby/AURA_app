@@ -17,7 +17,7 @@
 		7D2AE3A72F4E52330052C12F /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE3A62F4E522D0052C12F /* HealthKitManager.swift */; };
 		7D2AE3A92F4E52670052C12F /* ScanDecideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE3A82F4E52650052C12F /* ScanDecideView.swift */; };
 		7D2AE3AE2F4E674B0052C12F /* MovieDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE3AD2F4E674B0052C12F /* MovieDetailView.swift */; };
-		7D2EC20C2F5070990070AC14 /* gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 7D2EC20B2F5070980070AC14 /* gitignore */; };
+		7D2EC20C2F5070990070AC14 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 7D2EC20B2F5070980070AC14 /* .gitignore */; };
 		7D5ADE3F2F4CACEC00EB06DB /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5ADE3E2F4CACEC00EB06DB /* AuthView.swift */; };
 		7D5ADE492F4CB69500EB06DB /* NetworkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5ADE482F4CB69500EB06DB /* NetworkManager.swift */; };
 		7D5ADE512F4CB73200EB06DB /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5ADE502F4CB73200EB06DB /* ContentView.swift */; };
@@ -54,7 +54,7 @@
 		7D2AE3A62F4E522D0052C12F /* HealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManager.swift; sourceTree = "<group>"; };
 		7D2AE3A82F4E52650052C12F /* ScanDecideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanDecideView.swift; sourceTree = "<group>"; };
 		7D2AE3AD2F4E674B0052C12F /* MovieDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovieDetailView.swift; sourceTree = "<group>"; };
-		7D2EC20B2F5070980070AC14 /* gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = gitignore; sourceTree = "<group>"; };
+		7D2EC20B2F5070980070AC14 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		7D5ADE0E2F4C7B7200EB06DB /* AURA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AURA.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7D5ADE1D2F4C7B7300EB06DB /* AURATests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AURATests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7D5ADE272F4C7B7300EB06DB /* AURAUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AURAUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -132,7 +132,7 @@
 				7D5ADE482F4CB69500EB06DB /* NetworkManager.swift */,
 				7D5ADE502F4CB73200EB06DB /* ContentView.swift */,
 				7D5ADE3E2F4CACEC00EB06DB /* AuthView.swift */,
-				7D2EC20B2F5070980070AC14 /* gitignore */,
+				7D2EC20B2F5070980070AC14 /* .gitignore */,
 				7D5ADE102F4C7B7200EB06DB /* AURA */,
 				7D5ADE0F2F4C7B7200EB06DB /* Products */,
 			);
@@ -262,7 +262,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7D2EC20C2F5070990070AC14 /* gitignore in Resources */,
+				7D2EC20C2F5070990070AC14 /* .gitignore in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
