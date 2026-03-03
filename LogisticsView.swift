@@ -44,6 +44,147 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 }
 
+// MARK: - 2GIS Direct API
+class TwoGISService {
+    static let shared = TwoGISService()
+    private let apiKey = "a98beecb-a8c9-4dc4-a38f-e4a838ce92ef"
+
+    struct CatalogResponse: Codable {
+        let result: CatalogResult?
+    }
+    struct CatalogResult: Codable { let items: [CatalogItem]? }
+    struct CatalogItem: Codable {
+        let id: String?
+        let name: String?
+        let address_name: String?
+        let purpose_name: String?
+        let point: GeoPoint?
+    }
+    struct GeoPoint: Codable { let lat: Double; let lon: Double }
+
+    struct RoutingResponse: Codable { let result: [RoutingResult]? }
+    struct RoutingResult: Codable {
+        let total_distance: Int?
+        let total_duration: Int?
+    }
+
+    func searchPlaces(query: String, lat: Double?, lon: Double?) async -> [CatalogItem] {
+        var components = URLComponents(string: "https://catalog.api.2gis.com/3.0/items")!
+        var qi: [URLQueryItem] = [
+            .init(name: "key", value: apiKey),
+            .init(name: "q", value: query),
+            .init(name: "page_size", value: "5"),
+            .init(name: "fields", value: "items.point,items.address_name,items.purpose_name")
+        ]
+        if let lat = lat, let lon = lon {
+            qi.append(.init(name: "sort_point", value: "\(lon),\(lat)"))
+            qi.append(.init(name: "sort", value: "distance"))
+        }
+        components.queryItems = qi
+        guard let url = components.url else { return [] }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let resp = try JSONDecoder().decode(CatalogResponse.self, from: data)
+            return resp.result?.items ?? []
+        } catch {
+            print("2GIS catalog error: \(error)")
+            return []
+        }
+    }
+
+    func getRoute(fromLat: Double, fromLon: Double, toLat: Double, toLon: Double) async -> (km: Double, min: Int)? {
+        guard let url = URL(string: "https://routing.api.2gis.com/carrouting/6.0.0/global?key=\(apiKey)") else { return nil }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "points": [
+                ["type": "stop", "lat": fromLat, "lon": fromLon],
+                ["type": "stop", "lat": toLat, "lon": toLon]
+            ],
+            "locale": "ru",
+            "transport": "car",
+            "route_mode": "jam"
+        ]
+        do {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, _) = try await URLSession.shared.data(for: req)
+            let resp = try JSONDecoder().decode(RoutingResponse.self, from: data)
+            if let r = resp.result?.first {
+                return (Double(r.total_distance ?? 0) / 1000.0, max((r.total_duration ?? 0) / 60, 1))
+            }
+        } catch { print("2GIS routing error: \(error)") }
+        return nil
+    }
+
+    func getTrafficLevel(fromLat: Double, fromLon: Double, toLat: Double, toLon: Double) async -> Double {
+        guard let url = URL(string: "https://routing.api.2gis.com/carrouting/6.0.0/global?key=\(apiKey)") else { return 0.3 }
+        let makeReq: ([String: Any]) -> URLRequest = { body in
+            var r = URLRequest(url: url)
+            r.httpMethod = "POST"
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            r.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            return r
+        }
+        let pts: [[String: Any]] = [
+            ["type": "stop", "lat": fromLat, "lon": fromLon],
+            ["type": "stop", "lat": toLat, "lon": toLon]
+        ]
+        let reqJam = makeReq(["points": pts, "transport": "car", "route_mode": "jam"])
+        let reqFast = makeReq(["points": pts, "transport": "car", "route_mode": "fastest"])
+        do {
+            async let r1 = URLSession.shared.data(for: reqJam)
+            async let r2 = URLSession.shared.data(for: reqFast)
+            let (d1, _) = try await r1; let (d2, _) = try await r2
+            let jam = try JSONDecoder().decode(RoutingResponse.self, from: d1)
+            let fast = try JSONDecoder().decode(RoutingResponse.self, from: d2)
+            let jd = Double(jam.result?.first?.total_duration ?? 0)
+            let fd = Double(fast.result?.first?.total_duration ?? 0)
+            guard fd > 0 else { return 0.3 }
+            return min(max((jd - fd) / fd, 0), 1.0)
+        } catch { return 0.3 }
+    }
+}
+
+// MARK: - Keyword Extractor
+struct KeywordExtractor {
+    static let keywordMap: [(stem: String, display: String)] = [
+        ("стоматолог", "Стоматолог"), ("дантист", "Стоматолог"), ("зубн", "Стоматолог"),
+        ("врач", "Врач"), ("доктор", "Врач"), ("клиник", "Клиника"), ("больниц", "Больница"),
+        ("аптек", "Аптека"), ("банкомат", "Банкомат"), ("банк", "Банк"),
+        ("супермаркет", "Супермаркет"), ("магазин", "Магазин"), ("продукт", "Продукты"),
+        ("молок", "Молоко"), ("хлеб", "Хлеб"),
+        ("парикмахер", "Парикмахер"), ("барбер", "Барбершоп"), ("стрижк", "Стрижка"),
+        ("постричь", "Стрижка"), ("салон красот", "Салон"),
+        ("ресторан", "Ресторан"), ("кафе", "Кафе"),
+        ("посылк", "Посылка"), ("почт", "Почта"),
+        ("школ", "Школа"), ("офис", "Офис"), ("работ", "Работа"),
+        ("фитнес", "Фитнес"), ("спортзал", "Спортзал"), ("трениров", "Тренировка"),
+        ("перевод", "Перевод"), ("ремонт", "Ремонт"), ("химчистк", "Химчистка"),
+        ("заправ", "Заправка"), ("мойк", "Автомойка"), ("шиномонтаж", "Шиномонтаж"),
+        ("нотариус", "Нотариус"), ("мфц", "МФЦ")
+    ]
+
+    static func extract(from text: String) -> String {
+        let lower = text.lowercased()
+        for (stem, display) in keywordMap {
+            if lower.contains(stem) { return display }
+        }
+        var c = text
+        c = c.replacingOccurrences(of: #"\s*в\s+\d{1,2}[:.]\d{2}"#, with: "", options: .regularExpression)
+        for w in ["завтра","сегодня","послезавтра","утром","вечером","днём","ночью"] {
+            c = c.replacingOccurrences(of: w, with: "", options: .caseInsensitive)
+        }
+        c = c.trimmingCharacters(in: .whitespacesAndNewlines)
+        c = c.replacingOccurrences(of: #"^[Кк]\s+"#, with: "", options: .regularExpression)
+        c = c.replacingOccurrences(of: #"^[Вв]\s+"#, with: "", options: .regularExpression)
+        c = c.replacingOccurrences(of: #"^[Нн]а\s+"#, with: "", options: .regularExpression)
+        c = c.trimmingCharacters(in: .whitespacesAndNewlines)
+        if c.isEmpty { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        return c.prefix(1).uppercased() + c.dropFirst()
+    }
+}
+
 // MARK: - Models
 struct LogisticsTask: Identifiable, Codable {
     let id: UUID
@@ -61,6 +202,12 @@ struct LogisticsTask: Identifiable, Codable {
     var isErrand: Bool
     var placeLat: Double?
     var placeLon: Double?
+    var originalInput: String?
+    var distanceKm: Double?
+
+    var shortTitle: String {
+        KeywordExtractor.extract(from: originalInput ?? title)
+    }
 
     enum TaskStatus: String, Codable {
         case onTime, leaveNow, delayed, done
@@ -104,6 +251,23 @@ struct RichPlaceResult: Identifiable {
         if let userLoc = userLocation, let lat = place.lat, let lon = place.lon {
             let placeLoc = CLLocation(latitude: lat, longitude: lon)
             self.distanceMeters = Int(userLoc.distance(from: placeLoc))
+        } else {
+            self.distanceMeters = nil
+        }
+    }
+
+    // Direct init (for 2GIS catalog)
+    init(name: String, address: String, category: String, lat: Double, lon: Double, userLocation: CLLocation?) {
+        self.name = name
+        self.address = address
+        self.category = category
+        self.rating = nil
+        self.workingHours = nil
+        self.phone = nil
+        self.lat = lat
+        self.lon = lon
+        if let userLoc = userLocation {
+            self.distanceMeters = Int(userLoc.distance(from: CLLocation(latitude: lat, longitude: lon)))
         } else {
             self.distanceMeters = nil
         }
@@ -177,26 +341,89 @@ class LogisticsPersistence {
 @MainActor
 class LogisticsViewModel: ObservableObject {
     @Published var tasks: [LogisticsTask] = []
-    @Published var roads: [TrafficRoad] = [
-        TrafficRoad(name: "I-90 West", level: 0.2),
-        TrafficRoad(name: "Main Street", level: 0.85),
-        TrafficRoad(name: "Oak Avenue", level: 0.55),
-        TrafficRoad(name: "Highway 101", level: 0.15),
-        TrafficRoad(name: "Elm Street", level: 0.4),
-    ]
+    @Published var roads: [TrafficRoad] = []
     @Published var showAddTask = false
     @Published var isParsingTask = false
-    @Published var showSavePrompt = false
-    @Published var lastAddedTask: LogisticsTask?
+    @Published var isLoadingTraffic = false
+
+    private var trafficTimer: Timer?
+    private let twoGIS = TwoGISService.shared
 
     var urgentTask: LogisticsTask? { tasks.first { $0.status == .leaveNow } }
     var totalDriveMinutes: Int { tasks.map { $0.driveMinutes }.reduce(0, +) }
 
     init() {
-        // Load saved tasks if any
         let saved = LogisticsPersistence.load()
-        if !saved.isEmpty {
-            tasks = saved
+        if !saved.isEmpty { tasks = saved }
+        startTrafficRefresh()
+    }
+
+    private func startTrafficRefresh() {
+        Task { await refreshTraffic() }
+        trafficTimer = Timer.scheduledTimer(withTimeInterval: 180, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refreshTraffic()
+            }
+        }
+    }
+
+    func refreshTraffic() async {
+        guard let userLoc = LocationManager.shared.location else { return }
+        isLoadingTraffic = true
+        defer { isLoadingTraffic = false }
+        var newRoads: [TrafficRoad] = []
+        for task in tasks {
+            guard let lat = task.placeLat, let lon = task.placeLon else { continue }
+            let level = await twoGIS.getTrafficLevel(
+                fromLat: userLoc.coordinate.latitude, fromLon: userLoc.coordinate.longitude,
+                toLat: lat, toLon: lon
+            )
+            newRoads.append(TrafficRoad(name: task.shortTitle, level: level))
+        }
+        if newRoads.isEmpty {
+            let offsets: [(String, Double, Double)] = [
+                ("Центр", 0.01, 0.01), ("Север", 0.03, 0.0),
+                ("Восток", 0.0, 0.03), ("Юг", -0.03, 0.0), ("Запад", 0.0, -0.03)
+            ]
+            for (name, dlat, dlon) in offsets {
+                let level = await twoGIS.getTrafficLevel(
+                    fromLat: userLoc.coordinate.latitude, fromLon: userLoc.coordinate.longitude,
+                    toLat: userLoc.coordinate.latitude + dlat, toLon: userLoc.coordinate.longitude + dlon
+                )
+                newRoads.append(TrafficRoad(name: name, level: level))
+            }
+        }
+        roads = newRoads
+    }
+
+    func updateRouteInfo() async {
+        guard let userLoc = LocationManager.shared.location else { return }
+        for i in tasks.indices {
+            guard let lat = tasks[i].placeLat, let lon = tasks[i].placeLon else { continue }
+            if let route = await twoGIS.getRoute(
+                fromLat: userLoc.coordinate.latitude, fromLon: userLoc.coordinate.longitude,
+                toLat: lat, toLon: lon
+            ) {
+                tasks[i].driveMinutes = route.min
+                tasks[i].distanceKm = route.km
+            }
+        }
+        saveTasks()
+    }
+
+    func updateTaskStatuses() {
+        let now = Date()
+        for i in tasks.indices {
+            let timeToEvent = tasks[i].date.timeIntervalSince(now)
+            let driveSeconds = Double(tasks[i].driveMinutes) * 60
+            if timeToEvent <= 0 {
+                tasks[i].status = .done
+            } else if timeToEvent <= driveSeconds + 300 {
+                tasks[i].status = .leaveNow
+                tasks[i].alert = "Выезжайте сейчас! В пути: \(tasks[i].driveMinutes) мин"
+            } else {
+                tasks[i].status = .onTime
+            }
         }
     }
 
@@ -226,11 +453,26 @@ class LogisticsViewModel: ObservableObject {
 
         let isErrand = parsed?["is_errand"] == "true"
         let place = selectedPlace
-        let driveMin = Int(parsed?["drive_minutes"] ?? "15") ?? 15
+        var driveMin = Int(parsed?["drive_minutes"] ?? "15") ?? 15
+        var distKm: Double? = nil
+
+        // Real route from 2GIS
+        if let lat = place?.lat, let lon = place?.lon,
+           let userLoc = LocationManager.shared.location {
+            if let route = await twoGIS.getRoute(
+                fromLat: userLoc.coordinate.latitude, fromLon: userLoc.coordinate.longitude,
+                toLat: lat, toLon: lon
+            ) {
+                driveMin = route.min
+                distKm = route.km
+            }
+        }
+
+        let taskTitle = place?.name ?? KeywordExtractor.extract(from: input)
 
         let newTask = LogisticsTask(
             id: UUID(),
-            title: place?.name ?? parsed?["title"] ?? input,
+            title: taskTitle,
             subtitle: place?.address ?? parsed?["address"] ?? "",
             address: place?.address ?? parsed?["address"] ?? "",
             time: fmt.string(from: taskDate),
@@ -243,26 +485,24 @@ class LogisticsViewModel: ObservableObject {
             alert: nil,
             isErrand: isErrand,
             placeLat: place?.lat,
-            placeLon: place?.lon
+            placeLon: place?.lon,
+            originalInput: input,
+            distanceKm: distKm
         )
 
         tasks.append(newTask)
         tasks.sort { $0.date < $1.date }
-        lastAddedTask = newTask
-        showSavePrompt = true
+        saveTasks()
+        await refreshTraffic()
     }
 
-    func saveToNextSession() {
+    func saveTasks() {
         LogisticsPersistence.save(tasks)
-    }
-
-    func clearSaved() {
-        LogisticsPersistence.clear()
     }
 
     func deleteTask(id: UUID) {
         tasks.removeAll { $0.id == id }
-        LogisticsPersistence.save(tasks)
+        saveTasks()
     }
 
     private func colorName(_ color: Color) -> String {
@@ -282,6 +522,7 @@ class LogisticsViewModel: ObservableObject {
 struct LogisticsView: View {
     @StateObject private var vm = LogisticsViewModel()
     @StateObject private var locationManager = LocationManager.shared
+    let statusTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
         NavigationStack {
@@ -297,7 +538,7 @@ struct LogisticsView: View {
                         .padding(.horizontal)
 
                     // Live Traffic
-                    LiveTrafficCard(roads: vm.roads, totalMinutes: vm.totalDriveMinutes)
+                    LiveTrafficCard(roads: vm.roads, totalMinutes: vm.totalDriveMinutes, isLoading: vm.isLoadingTraffic)
                         .padding(.horizontal)
 
                     // Today's Route
@@ -350,15 +591,15 @@ struct LogisticsView: View {
             .sheet(isPresented: $vm.showAddTask) {
                 AddTaskSheet(vm: vm, locationManager: locationManager)
             }
-            .alert("Сохранить маршрут?", isPresented: $vm.showSavePrompt) {
-                Button("Сохранить на завтра") { vm.saveToNextSession() }
-                Button("Только сегодня", role: .destructive) { vm.clearSaved() }
-                Button("Отмена", role: .cancel) {}
-            } message: {
-                Text("Хочешь чтобы этот маршрут был доступен в следующий раз?")
-            }
             .onAppear {
                 locationManager.requestPermission()
+                vm.updateTaskStatuses()
+            }
+            .onReceive(statusTimer) { _ in
+                vm.updateTaskStatuses()
+            }
+            .task {
+                await vm.updateRouteInfo()
             }
         }
     }
@@ -447,30 +688,48 @@ struct UrgentBanner: View {
 struct LiveTrafficCard: View {
     let roads: [TrafficRoad]
     let totalMinutes: Int
+    var isLoading: Bool = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "car.fill").foregroundStyle(.secondary).font(.subheadline)
-                    Text("Live Traffic").font(.subheadline).fontWeight(.semibold)
+                    Text("Трафик").font(.subheadline).fontWeight(.semibold)
                 }
                 Spacer()
-                Text("\(totalMinutes) min total").font(.caption).foregroundStyle(.secondary)
+                if isLoading {
+                    ProgressView().scaleEffect(0.7)
+                } else {
+                    Text("\(totalMinutes) мин всего").font(.caption).foregroundStyle(.secondary)
+                }
             }
-            VStack(spacing: 8) {
-                ForEach(roads) { road in
-                    HStack(spacing: 10) {
-                        Circle().fill(road.color).frame(width: 8, height: 8)
-                        Text(road.name).font(.caption).frame(width: 100, alignment: .leading)
-                        Spacer()
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 3).fill(Color(.systemGray5)).frame(height: 5)
-                                RoundedRectangle(cornerRadius: 3).fill(road.color)
-                                    .frame(width: geo.size.width * road.level, height: 5)
+            if roads.isEmpty {
+                HStack {
+                    Spacer()
+                    if isLoading {
+                        Text("Загрузка трафика...").font(.caption).foregroundStyle(.tertiary)
+                    } else {
+                        Text("Добавьте задачу для анализа пробок").font(.caption).foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                }
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(roads) { road in
+                        HStack(spacing: 10) {
+                            Circle().fill(road.color).frame(width: 8, height: 8)
+                            Text(road.name).font(.caption).frame(width: 100, alignment: .leading)
+                            Spacer()
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 3).fill(Color(.systemGray5)).frame(height: 5)
+                                    RoundedRectangle(cornerRadius: 3).fill(road.color)
+                                        .frame(width: geo.size.width * road.level, height: 5)
+                                }
                             }
+                            .frame(height: 5)
                         }
-                        .frame(height: 5)
                     }
                 }
             }
@@ -538,8 +797,10 @@ struct TaskTimelineRow: View {
                 Spacer().frame(height: 10)
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(task.title).font(.subheadline).fontWeight(.semibold)
-                        Text(task.subtitle).font(.caption).foregroundStyle(.secondary)
+                        Text(task.shortTitle).font(.subheadline).fontWeight(.semibold)
+                        if !task.subtitle.isEmpty {
+                            Text(task.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
                     }
                     Spacer()
                     statusView
@@ -551,7 +812,13 @@ struct TaskTimelineRow: View {
                     }
                     HStack(spacing: 3) {
                         Image(systemName: "car.fill").font(.caption2).foregroundStyle(.secondary)
-                        Text("\(task.driveMinutes) min").font(.caption).foregroundStyle(.secondary)
+                        Text("\(task.driveMinutes) мин").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let km = task.distanceKm, km > 0.1 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "road.lanes").font(.caption2).foregroundStyle(.secondary)
+                            Text(String(format: "%.1f км", km)).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     HStack(spacing: 3) {
                         Image(systemName: "parkingsign.circle").font(.caption2).foregroundStyle(.secondary)
@@ -815,10 +1082,26 @@ struct AddTaskSheet: View {
         isSearchingPlaces = true
         let lat = locationManager.location?.coordinate.latitude
         let lon = locationManager.location?.coordinate.longitude
-        let raw = (try? await NetworkManager.shared.searchPlace(
-            query: placeSearchQuery, lat: lat, lon: lon
-        )) ?? []
-        searchResults = raw.map { RichPlaceResult(from: $0, userLocation: locationManager.location) }
+        // 2GIS direct search
+        let items = await TwoGISService.shared.searchPlaces(query: placeSearchQuery, lat: lat, lon: lon)
+        if !items.isEmpty {
+            searchResults = items.compactMap { item -> RichPlaceResult? in
+                guard let name = item.name, let point = item.point else { return nil }
+                return RichPlaceResult(
+                    name: name,
+                    address: item.address_name ?? "",
+                    category: item.purpose_name ?? "Место",
+                    lat: point.lat, lon: point.lon,
+                    userLocation: locationManager.location
+                )
+            }
+        } else {
+            // Fallback to backend
+            let raw = (try? await NetworkManager.shared.searchPlace(
+                query: placeSearchQuery, lat: lat, lon: lon
+            )) ?? []
+            searchResults = raw.map { RichPlaceResult(from: $0, userLocation: locationManager.location) }
+        }
         isSearchingPlaces = false
     }
 }
@@ -918,11 +1201,21 @@ struct PlaceResultRow: View {
 // MARK: - Smart Tips
 struct SmartTipsCard: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Умные функции", systemImage: "lightbulb.fill")
-                .font(.caption).fontWeight(.semibold).foregroundStyle(.orange)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.orange.opacity(0.15))
+                        .frame(width: 26, height: 26)
+                    Image(systemName: "lightbulb.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.orange)
+                }
+                Text("Умные функции")
+                    .font(.subheadline).fontWeight(.semibold).foregroundStyle(.orange)
+            }
 
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 LogisticsTipRow(icon: "bell.fill", color: .blue, text: "Напомнит когда выезжать с учётом пробок")
                 LogisticsTipRow(icon: "cloud.rain.fill", color: .cyan, text: "Учтёт погоду — ливень = +15 мин")
                 LogisticsTipRow(icon: "bag.fill", color: .orange, text: "«Купить молоко» — напомнит у магазина")
@@ -942,7 +1235,15 @@ struct LogisticsTipRow: View {
     let text: String
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: icon).font(.caption).foregroundStyle(color).frame(width: 16)
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(color.opacity(0.12))
+                    .frame(width: 26, height: 26)
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            .frame(width: 26, height: 26)
             Text(text).font(.caption).foregroundStyle(.secondary)
         }
     }

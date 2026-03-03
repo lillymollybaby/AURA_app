@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AABB0002000000000000AA02 /* LetterboxdSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB0001000000000000AA01 /* LetterboxdSyncService.swift */; };
 		7D117DE72F4F821B00587E83 /* MovieQuizView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D117DE62F4F821600587E83 /* MovieQuizView.swift */; };
 		7D117DE92F4F845E00587E83 /* PlatformConnectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D117DE82F4F845C00587E83 /* PlatformConnectSheet.swift */; };
 		7D2AE39D2F4E4B570052C12F /* LogisticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE39C2F4E4B540052C12F /* LogisticsView.swift */; };
@@ -18,6 +19,7 @@
 		7D2AE3A92F4E52670052C12F /* ScanDecideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE3A82F4E52650052C12F /* ScanDecideView.swift */; };
 		7D2AE3AE2F4E674B0052C12F /* MovieDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2AE3AD2F4E674B0052C12F /* MovieDetailView.swift */; };
 		7D2EC20C2F5070990070AC14 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 7D2EC20B2F5070980070AC14 /* .gitignore */; };
+		7D2EC20E2F507F7B0070AC14 /* ErrorHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2EC20D2F507F780070AC14 /* ErrorHandler.swift */; };
 		7D5ADE3F2F4CACEC00EB06DB /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5ADE3E2F4CACEC00EB06DB /* AuthView.swift */; };
 		7D5ADE492F4CB69500EB06DB /* NetworkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5ADE482F4CB69500EB06DB /* NetworkManager.swift */; };
 		7D5ADE512F4CB73200EB06DB /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5ADE502F4CB73200EB06DB /* ContentView.swift */; };
@@ -44,6 +46,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		AABB0001000000000000AA01 /* LetterboxdSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LetterboxdSyncService.swift; sourceTree = "<group>"; };
 		7D117DE62F4F821600587E83 /* MovieQuizView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovieQuizView.swift; sourceTree = "<group>"; };
 		7D117DE82F4F845C00587E83 /* PlatformConnectSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformConnectSheet.swift; sourceTree = "<group>"; };
 		7D2AE39C2F4E4B540052C12F /* LogisticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogisticsView.swift; sourceTree = "<group>"; };
@@ -55,6 +58,7 @@
 		7D2AE3A82F4E52650052C12F /* ScanDecideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanDecideView.swift; sourceTree = "<group>"; };
 		7D2AE3AD2F4E674B0052C12F /* MovieDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovieDetailView.swift; sourceTree = "<group>"; };
 		7D2EC20B2F5070980070AC14 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
+		7D2EC20D2F507F780070AC14 /* ErrorHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorHandler.swift; sourceTree = "<group>"; };
 		7D5ADE0E2F4C7B7200EB06DB /* AURA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AURA.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7D5ADE1D2F4C7B7300EB06DB /* AURATests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AURATests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7D5ADE272F4C7B7300EB06DB /* AURAUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AURAUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -116,6 +120,8 @@
 		7D5ADE052F4C7B7200EB06DB = {
 			isa = PBXGroup;
 			children = (
+				AABB0001000000000000AA01 /* LetterboxdSyncService.swift */,
+				7D2EC20D2F507F780070AC14 /* ErrorHandler.swift */,
 				7D117DE82F4F845C00587E83 /* PlatformConnectSheet.swift */,
 				7D117DE62F4F821600587E83 /* MovieQuizView.swift */,
 				7D2AE3A82F4E52650052C12F /* ScanDecideView.swift */,
@@ -302,6 +308,8 @@
 				7DB4E4542F4E00A100A67A48 /* CinemaView .swift in Sources */,
 				7D2AE3A72F4E52330052C12F /* HealthKitManager.swift in Sources */,
 				7D2AE3A12F4E4FA00052C12F /* Languagesview.swift in Sources */,
+				7D2EC20E2F507F7B0070AC14 /* ErrorHandler.swift in Sources */,
+				AABB0002000000000000AA02 /* LetterboxdSyncService.swift in Sources */,
 				7D5ADE3F2F4CACEC00EB06DB /* AuthView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -460,18 +468,24 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CVR5529SB8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AURA/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Aura;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Приложение запрашивает доступ к данным здоровья для улучшения персонализированного опыта.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Приложение запрашивает доступ к обновлению данных здоровья для синхронизации вашей информации";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Нужно чтобы рассчитать маршрут от твоего текущего местоположения";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -479,6 +493,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = sakura.aura.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -494,18 +509,24 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CVR5529SB8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AURA/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Aura;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Приложение запрашивает доступ к данным здоровья для улучшения персонализированного опыта.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Приложение запрашивает доступ к обновлению данных здоровья для синхронизации вашей информации";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Нужно чтобы рассчитать маршрут от твоего текущего местоположения";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -513,6 +534,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = sakura.aura.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -529,6 +551,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CVR5529SB8;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
@@ -550,6 +573,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CVR5529SB8;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
@@ -570,6 +594,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CVR5529SB8;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = lillymollybaby.AURAUITests;
@@ -589,6 +614,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CVR5529SB8;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = lillymollybaby.AURAUITests;

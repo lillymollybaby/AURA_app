@@ -35,6 +35,7 @@ struct RootView: View {
         .onAppear {
             NotificationManager.shared.requestPermission()
             NotificationManager.shared.scheduleDinnerReminder()
+            NotificationManager.shared.scheduleQuizReminder()
         }
     }
 }

@@ -25,8 +25,12 @@ struct DailySummaryResponse: Codable {
     let total_carbs: Double
     let meals: [MealResponse]?
     let ai_advice: String?
-    
-    var calorie_goal: Int { 2200 }
+    let calorie_goal: Int?      // реальная цель с сервера (может отсутствовать)
+    let protein_goal: Int?
+    let fat_goal: Int?
+    let carbs_goal: Int?
+
+    // Обратная совместимость
     var total_protein: Double { total_proteins }
     var total_fat: Double { total_fats }
     var total_carbs_compat: Double { total_carbs }
@@ -59,7 +63,39 @@ struct MovieResponse: Codable, Identifiable {
     let watched: Bool?
     let review: String?
     
-    var stableId: Int { tmdb_id ?? id ?? 0 }
+    var stableId: Int { tmdb_id ?? id ?? title.hashValue }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, tmdb_id, title, year, rating, poster_url, watched, review
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(Int.self, forKey: .id)
+        tmdb_id = try c.decodeIfPresent(Int.self, forKey: .tmdb_id)
+        title = try c.decode(String.self, forKey: .title)
+        rating = try c.decodeIfPresent(Double.self, forKey: .rating)
+        poster_url = try c.decodeIfPresent(String.self, forKey: .poster_url)
+        watched = try c.decodeIfPresent(Bool.self, forKey: .watched)
+        review = try c.decodeIfPresent(String.self, forKey: .review)
+        // year may come as Int or String from backend
+        if let intYear = try? c.decodeIfPresent(Int.self, forKey: .year) {
+            year = String(intYear)
+        } else {
+            year = try? c.decodeIfPresent(String.self, forKey: .year)
+        }
+    }
+    
+    init(id: Int?, tmdb_id: Int?, title: String, year: String?, rating: Double?, poster_url: String?, watched: Bool?, review: String?) {
+        self.id = id
+        self.tmdb_id = tmdb_id
+        self.title = title
+        self.year = year
+        self.rating = rating
+        self.poster_url = poster_url
+        self.watched = watched
+        self.review = review
+    }
 }
 
 struct CastMember: Codable {
@@ -127,10 +163,6 @@ struct PlaceResult: Codable {
     let lat: Double?
     let lon: Double?
     let type: String?
-    let rating: Double?
-    let working_hours: String?
-    let phone: String?
-    let distance_meters: Int?
 }
 
 struct PlaceSearchResponse: Codable {
@@ -156,37 +188,88 @@ struct DinnerIdeasResponse: Codable {
 }
 
 
-// MARK: - Auth Storage
+// MARK: - Auth Storage (Keychain)
 class AuthStorage {
     static let shared = AuthStorage()
     private let tokenKey = "auth_token"
-    
+    private let service  = "com.aura.app"
+
     var token: String? {
-        get { UserDefaults.standard.string(forKey: tokenKey) }
-        set { UserDefaults.standard.set(newValue, forKey: tokenKey) }
+        get { keychainGet() }
+        set {
+            if let value = newValue { keychainSet(value) }
+            else { keychainDelete() }
+        }
     }
-    
+
     var isLoggedIn: Bool {
-        token != nil && !(token?.isEmpty ?? true)
+        guard let t = token else { return false }
+        return !t.isEmpty
     }
-    
-    func logout() {
-        UserDefaults.standard.removeObject(forKey: tokenKey)
+
+    func logout() { keychainDelete() }
+
+    // MARK: Keychain helpers
+    private func keychainGet() -> String? {
+        let query: [CFString: Any] = [
+            kSecClass:            kSecClassGenericPassword,
+            kSecAttrService:      service,
+            kSecAttrAccount:      tokenKey,
+            kSecReturnData:       true,
+            kSecMatchLimit:       kSecMatchLimitOne
+        ]
+        var ref: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &ref)
+        guard status == errSecSuccess,
+              let data = ref as? Data,
+              let string = String(data: data, encoding: .utf8)
+        else { return nil }
+        return string
+    }
+
+    private func keychainSet(_ value: String) {
+        keychainDelete() // удаляем старое перед записью
+        guard let data = value.data(using: .utf8) else { return }
+        let query: [CFString: Any] = [
+            kSecClass:           kSecClassGenericPassword,
+            kSecAttrService:     service,
+            kSecAttrAccount:     tokenKey,
+            kSecValueData:       data,
+            // доступен только когда устройство разблокировано, не синхронизируется в iCloud
+            kSecAttrAccessible:  kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ]
+        SecItemAdd(query as CFDictionary, nil)
+    }
+
+    private func keychainDelete() {
+        let query: [CFString: Any] = [
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: tokenKey
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 }
 
 // MARK: - API Error
 enum APIError: Error, LocalizedError {
-    case networkError
+    case networkError       // неверный URL
+    case noInternet         // нет соединения
     case serverError(String)
     case unauthorized
-    
+
     var errorDescription: String? {
         switch self {
-        case .networkError: return "Нет подключения к серверу"
+        case .networkError:        return "Ошибка соединения"
+        case .noInternet:          return "Нет интернета. Проверьте подключение."
         case .serverError(let msg): return msg
-        case .unauthorized: return "Необходима авторизация"
+        case .unauthorized:        return "Сессия истекла. Войдите снова."
         }
+    }
+
+    var isNoInternet: Bool {
+        if case .noInternet = self { return true }
+        return false
     }
 }
 
@@ -212,12 +295,36 @@ class NetworkManager {
         if let body = body {
             req.httpBody = try JSONEncoder().encode(body)
         }
-        let (data, response) = try await session.data(for: req)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: req)
+        } catch let urlError as URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
+                 .timedOut, .dnsLookupFailed:
+                throw APIError.noInternet
+            default:
+                throw APIError.networkError
+            }
+        }
         if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 401 {
+            AuthStorage.shared.logout()
+            await MainActor.run {
+                NotificationCenter.default.post(name: .didLogout, object: nil)
+            }
             throw APIError.unauthorized
+        }
+        // Логировать все не-2xx ответы
+        if let httpResponse = response as? HTTPURLResponse,
+           !(200...299).contains(httpResponse.statusCode) {
+            let body = String(data: data, encoding: .utf8) ?? "no body"
+            print("[API] ❌ \(method) \(path) → \(httpResponse.statusCode): \(body)")
+            throw APIError.serverError("HTTP \(httpResponse.statusCode): \(body)")
         }
         guard let result = try? JSONDecoder().decode(T.self, from: data) else {
             let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
+            print("[API] ⚠️ Decode failed for \(method) \(path): \(errStr.prefix(200))")
             throw APIError.serverError(errStr)
         }
         return result
@@ -229,7 +336,13 @@ class NetworkManager {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        req.httpBody = "username=\(email)&password=\(password)".data(using: .utf8)
+        // URL-encode чтобы спецсимволы (&, =, +, #) в пароле не ломали form-data
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "username", value: email),
+            URLQueryItem(name: "password", value: password)
+        ]
+        req.httpBody = components.percentEncodedQuery?.data(using: .utf8)
         let (data, _) = try await session.data(for: req)
         guard let result = try? JSONDecoder().decode(TokenResponse.self, from: data) else {
             throw APIError.serverError("Неверный email или пароль")
@@ -288,6 +401,10 @@ class NetworkManager {
         
         let (data, response) = try await session.data(for: req)
         if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 401 {
+            AuthStorage.shared.logout()
+            await MainActor.run {
+                NotificationCenter.default.post(name: .didLogout, object: nil)
+            }
             throw APIError.unauthorized
         }
         guard let result = try? JSONDecoder().decode(MealResponse.self, from: data) else {

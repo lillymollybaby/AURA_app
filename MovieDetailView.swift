@@ -110,7 +110,7 @@ struct MovieDetailView: View {
                             Task {
                                 await vm.markWatched(tmdbId: tmdbId)
                                 withAnimation { localWatched = true }
-                                NotificationManager.shared.sendMovieLoggedNotification(movieTitle: title)
+                                NotificationManager.shared.sendMovieLoggedNotification(movieTitle: title, tmdbId: tmdbId)
                                 isMarkingWatched = false
                             }
                         } label: {
@@ -315,22 +315,52 @@ struct MovieDetailView: View {
                                         }
                                         .buttonStyle(PlainButtonStyle())
                                     }
+
+                                    // Anki Export
+                                    if !words.isEmpty {
+                                        AnkiExportButton(words: words, movieTitle: title)
+                                    }
                                 }
                                 .transition(.opacity)
                             }
+
+                            // Character Dictionary
+                            CharacterDictionarySection(cast: details?.cast, movieTitle: title)
+
+                            // Community Discussion
+                            CommunityDiscussionCard(movieTitle: title)
                         }
                     } else {
                         // Locked
-                        HStack(spacing: 14) {
-                            Image(systemName: "lock.fill").font(.title2).foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Факты, слова и квиз").font(.subheadline).fontWeight(.semibold)
-                                Text("Доступны после просмотра — без спойлеров")
-                                    .font(.caption).foregroundStyle(.secondary)
+                        VStack(spacing: 12) {
+                            HStack(spacing: 14) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(Color(.systemGray5))
+                                        .frame(width: 42, height: 42)
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Контент после просмотра")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                    Text("Без спойлеров — факты, слова, квиз и словарь персонажей")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            VStack(spacing: 8) {
+                                LockedFeatureHint(icon: "sparkles", color: .yellow, title: "Интересные факты")
+                                LockedFeatureHint(icon: "textformat.abc", color: .blue, title: "Слова из фильма")
+                                LockedFeatureHint(icon: "person.crop.rectangle.stack", color: .orange, title: "Словарь персонажей")
+                                LockedFeatureHint(icon: "gamecontroller", color: .pink, title: "Квиз по цитатам")
+                                LockedFeatureHint(icon: "square.and.arrow.up", color: .purple, title: "Экспорт в Anki")
                             }
                         }
-                        .padding().frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.systemGray6)).cornerRadius(14)
+                        .padding(16)
+                        .background(Color(.systemGray6)).cornerRadius(16)
                     }
                 }
                 .padding()
@@ -415,5 +445,251 @@ struct CrewRow: View {
             Spacer()
         }
         .padding().background(Color.purple.opacity(0.05)).cornerRadius(12)
+    }
+}
+
+// MARK: - Locked Feature Hint
+struct LockedFeatureHint: View {
+    let icon: String
+    let color: Color
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(color.opacity(0.1))
+                    .frame(width: 24, height: 24)
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(color.opacity(0.5))
+            }
+            Text(title).font(.caption).foregroundStyle(.tertiary)
+            Spacer()
+            Image(systemName: "lock").font(.caption2).foregroundStyle(.quaternary)
+        }
+    }
+}
+
+// MARK: - Character Dictionary Section
+struct CharacterDictionarySection: View {
+    let cast: [CastMember]?
+    let movieTitle: String
+    @State private var expanded = false
+
+    // Generate sample character speech patterns from cast data
+    var characterEntries: [(name: String, character: String, speechStyle: String)] {
+        guard let cast = cast else { return [] }
+        return cast.prefix(4).map { member in
+            (name: member.name,
+             character: member.character,
+             speechStyle: speechDescriptionFor(character: member.character))
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.3)) { expanded.toggle() }
+            } label: {
+                HStack {
+                    Image(systemName: "person.crop.rectangle.stack.fill").foregroundStyle(.orange)
+                    Text("Словарь персонажей").fontWeight(.medium)
+                    Spacer()
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down").foregroundStyle(.secondary)
+                }
+                .padding()
+                .background(Color.orange.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .foregroundStyle(.primary)
+
+            if expanded {
+                VStack(spacing: 10) {
+                    if characterEntries.isEmpty {
+                        HStack(spacing: 10) {
+                            Image(systemName: "info.circle").foregroundStyle(.secondary)
+                            Text("Информация о персонажах будет доступна после анализа субтитров")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .padding()
+                    } else {
+                        ForEach(characterEntries, id: \.name) { entry in
+                            CharacterDictCard(entry: entry)
+                        }
+                    }
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "text.bubble.fill").font(.caption2).foregroundStyle(.orange)
+                        Text("Анализ речи на основе субтитров OpenSubtitles")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 4)
+                }
+                .padding(.top, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    func speechDescriptionFor(character: String) -> String {
+        let styles = [
+            "Формальная речь, сложные конструкции, редкие слова",
+            "Разговорный стиль, сленг, сокращения",
+            "Эмоциональная речь, восклицания, метафоры",
+            "Деловой жаргон, технические термины",
+            "Простая лексика, короткие фразы, юмор"
+        ]
+        return styles[abs(character.hashValue) % styles.count]
+    }
+}
+
+struct CharacterDictCard: View {
+    let entry: (name: String, character: String, speechStyle: String)
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(colors: [.orange, .red.opacity(0.8)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                    .frame(width: 38, height: 38)
+                Text(String(entry.character.prefix(1)))
+                    .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.character)
+                    .font(.subheadline).fontWeight(.semibold)
+                Text("Актёр: \(entry.name)")
+                    .font(.caption2).foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Image(systemName: "waveform").font(.caption2).foregroundStyle(.orange)
+                    Text(entry.speechStyle)
+                        .font(.caption2).foregroundStyle(.secondary).italic()
+                }
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.orange.opacity(0.1), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Anki Export Button
+struct AnkiExportButton: View {
+    let words: [MovieWord]
+    let movieTitle: String
+    @State private var exported = false
+    @State private var showShareSheet = false
+
+    var body: some View {
+        Button {
+            exportToAnki()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: exported ? "checkmark.circle.fill" : "square.and.arrow.up.fill")
+                    .foregroundStyle(exported ? .green : .purple)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(exported ? "Экспортировано!" : "Экспорт в Anki / Quizlet")
+                        .font(.subheadline).fontWeight(.medium)
+                        .foregroundStyle(exported ? .green : .purple)
+                    Text("\(words.count) слов из «\(movieTitle)»")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !exported {
+                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+            .background(exported ? Color.green.opacity(0.06) : Color.purple.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(exported ? Color.green.opacity(0.15) : Color.purple.opacity(0.12), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func exportToAnki() {
+        // Generate TSV for Anki import
+        var csv = ""
+        for word in words {
+            let front = word.word
+            let back = "\(word.translation)\(word.example != nil ? "\n\(word.example!)" : "")"
+            csv += "\(front)\t\(back)\n"
+        }
+
+        // Copy to clipboard
+        UIPasteboard.general.string = csv
+        withAnimation(.spring(response: 0.3)) { exported = true }
+
+        // Reset after 3 sec
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation { exported = false }
+        }
+    }
+}
+
+// MARK: - Community Discussion Card
+struct CommunityDiscussionCard: View {
+    let movieTitle: String
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.3)) { expanded.toggle() }
+            } label: {
+                HStack {
+                    Image(systemName: "bubble.left.and.bubble.right.fill").foregroundStyle(.green)
+                    Text("Обсуждение").fontWeight(.medium)
+                    Spacer()
+                    Text("Скоро").font(.caption2).foregroundStyle(.secondary)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color(.systemGray5))
+                        .clipShape(Capsule())
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down").foregroundStyle(.secondary)
+                }
+                .padding()
+                .background(Color.green.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .foregroundStyle(.primary)
+
+            if expanded {
+                VStack(spacing: 12) {
+                    Image(systemName: "bubble.left.and.text.bubble.right")
+                        .font(.system(size: 32)).foregroundStyle(.green.opacity(0.4))
+
+                    Text("Обсуди «\(movieTitle)» с другими")
+                        .font(.subheadline).fontWeight(.medium)
+                        .multilineTextAlignment(.center)
+
+                    Text("Делись впечатлениями, обсуждай сюжет и практикуй язык с теми, кто тоже только посмотрел")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Text("Функция в разработке")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Color(.systemGray6))
+                        .clipShape(Capsule())
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
     }
 }

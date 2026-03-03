@@ -3,13 +3,69 @@ import PhotosUI
 
 // MARK: - Scan Result Model
 struct ScanResult: Codable {
-    let name: String
-    let calories: Double
-    let proteins: Double
-    let fats: Double
-    let carbs: Double
+    // Поля нового бэкенда
+    let product_name: String?
+    let verdict: String?           // "safe" | "caution" | "avoid"
+    let score: Double?             // 0–10, где 10 = очень здорово
+    let warnings: [String]?        // ["Содержит E621", "Много сахара"]
+    let positives: [String]?       // ["Нет трансжиров", "Высокий белок"]
+    let summary: String?           // краткое заключение AI
+
+    // Поля старого бэкенда (оставляем для совместимости)
+    let name: String?
+    let calories: Double?
+    let proteins: Double?
+    let fats: Double?
+    let carbs: Double?
     let serving_size: String?
     let ingredients_summary: String?
+
+    // Вспомогательные computed properties
+    var displayName: String {
+        product_name ?? name ?? "Продукт"
+    }
+
+    var verdictColor: VerdictColor {
+        switch verdict {
+        case "safe":    return .safe
+        case "caution": return .caution
+        case "avoid":   return .avoid
+        default:
+            // фоллбэк по калориям если verdict отсутствует
+            let cal = calories ?? 0
+            if cal < 200 { return .safe }
+            if cal < 400 { return .caution }
+            return .avoid
+        }
+    }
+}
+
+enum VerdictColor {
+    case safe, caution, avoid
+
+    var color: Color {
+        switch self {
+        case .safe:    return .green
+        case .caution: return .orange
+        case .avoid:   return .red
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .safe:    return "Можно есть"
+        case .caution: return "Осторожно"
+        case .avoid:   return "Лучше избегать"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .safe:    return "checkmark.circle.fill"
+        case .caution: return "exclamationmark.circle.fill"
+        case .avoid:   return "xmark.circle.fill"
+        }
+    }
 }
 
 // MARK: - Scan & Decide View
@@ -173,59 +229,108 @@ struct ScanDecideView: View {
 struct ScanResultCard: View {
     let result: ScanResult
 
-    var calorieColor: Color {
-        if result.calories < 200 { return .green }
-        if result.calories < 400 { return .orange }
-        return .red
-    }
+    var vc: VerdictColor { result.verdictColor }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
 
-            // Product name
+            // Название + вердикт
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(calorieColor.opacity(0.12))
+                        .fill(vc.color.opacity(0.12))
                         .frame(width: 52, height: 52)
-                    Image(systemName: "leaf.fill")
-                        .foregroundColor(calorieColor)
+                    Image(systemName: vc.icon)
+                        .foregroundColor(vc.color)
                         .font(.title3)
                 }
-
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(result.name).font(.title3).bold().lineLimit(2)
+                    Text(result.displayName)
+                        .font(.title3).bold().lineLimit(2)
                     if let serving = result.serving_size {
-                        Text("Порция: \(serving)").font(.caption).foregroundColor(.secondary)
+                        Text("Порция: \(serving)")
+                            .font(.caption).foregroundColor(.secondary)
                     }
                 }
-
                 Spacer()
-
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(Int(result.calories))").font(.system(size: 28, weight: .bold)).foregroundColor(calorieColor)
-                    Text("ккал").font(.caption).foregroundColor(.secondary)
+                    Text(vc.label)
+                        .font(.caption).fontWeight(.semibold)
+                        .foregroundColor(vc.color)
+                    if let score = result.score {
+                        Text("\(Int(score))/10")
+                            .font(.title3).bold().foregroundColor(vc.color)
+                    } else if let cal = result.calories {
+                        Text("\(Int(cal))")
+                            .font(.system(size: 24, weight: .bold)).foregroundColor(vc.color)
+                        Text("ккал").font(.caption).foregroundColor(.secondary)
+                    }
                 }
             }
 
             Divider()
 
-            // Macros
-            HStack(spacing: 0) {
-                MacroStatScan(value: Int(result.proteins), label: "Белки", unit: "г", color: .blue)
-                Divider().frame(height: 40)
-                MacroStatScan(value: Int(result.carbs), label: "Углеводы", unit: "г", color: .orange)
-                Divider().frame(height: 40)
-                MacroStatScan(value: Int(result.fats), label: "Жиры", unit: "г", color: .purple)
+            // Предупреждения
+            if let warnings = result.warnings, !warnings.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Осторожно", systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline).fontWeight(.semibold)
+                        .foregroundColor(.orange)
+                    ForEach(warnings, id: \.self) { warning in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundColor(.red).font(.caption)
+                            Text(warning)
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color.orange.opacity(0.07))
+                .cornerRadius(12)
             }
 
-            // Ingredients summary
-            if let summary = result.ingredients_summary, !summary.isEmpty {
+            // Плюсы
+            if let positives = result.positives, !positives.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("🔬 Состав").font(.subheadline).bold()
-                    Text(summary).font(.caption).foregroundColor(.secondary).lineSpacing(3)
+                    Label("Хорошее", systemImage: "checkmark.seal.fill")
+                        .font(.subheadline).fontWeight(.semibold)
+                        .foregroundColor(.green)
+                    ForEach(positives, id: \.self) { positive in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundColor(.green).font(.caption)
+                            Text(positive)
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                    }
                 }
-                .padding()
+                .padding(12)
+                .background(Color.green.opacity(0.07))
+                .cornerRadius(12)
+            }
+
+            // Macros (если есть от старого бэкенда)
+            if result.proteins != nil || result.carbs != nil || result.fats != nil {
+                Divider()
+                HStack(spacing: 0) {
+                    MacroStatScan(value: Int(result.proteins ?? 0), label: "Белки", unit: "г", color: .blue)
+                    Divider().frame(height: 40)
+                    MacroStatScan(value: Int(result.carbs ?? 0), label: "Углеводы", unit: "г", color: .orange)
+                    Divider().frame(height: 40)
+                    MacroStatScan(value: Int(result.fats ?? 0), label: "Жиры", unit: "г", color: .purple)
+                }
+            }
+
+            // AI заключение
+            if let summary = result.summary ?? result.ingredients_summary, !summary.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Заключение AI", systemImage: "sparkles")
+                        .font(.subheadline).fontWeight(.semibold)
+                    Text(summary)
+                        .font(.caption).foregroundColor(.secondary).lineSpacing(3)
+                }
+                .padding(12)
                 .background(Color(.systemGray6))
                 .cornerRadius(12)
             }
@@ -233,10 +338,10 @@ struct ScanResultCard: View {
         .padding()
         .background(Color(.systemBackground))
         .cornerRadius(20)
-        .shadow(color: calorieColor.opacity(0.15), radius: 10, x: 0, y: 4)
+        .shadow(color: vc.color.opacity(0.12), radius: 10, x: 0, y: 4)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(calorieColor.opacity(0.2), lineWidth: 1.5)
+                .stroke(vc.color.opacity(0.2), lineWidth: 1.5)
         )
     }
 }

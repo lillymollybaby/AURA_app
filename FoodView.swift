@@ -6,13 +6,19 @@ struct FoodView: View {
     @State private var meals: [MealResponse] = []
     @State private var showAddSheet = false
     @State private var showScanSheet = false
+    @State private var error: AppError?
     @State private var dinnerIdeas: String?
     @State private var isLoadingIdeas = false
     @State private var showDinnerIdeas = false
 
+    // Приоритет: сервер → ProfileSettings → дефолт 2200
+    var effectiveCalorieGoal: Int {
+        summary?.calorie_goal ?? ProfileSettings.shared.calorieGoal
+    }
+
     var progress: Double {
-        guard let s = summary, s.calorie_goal > 0 else { return 0 }
-        return min(s.total_calories / Double(s.calorie_goal), 1.0)
+        guard let s = summary, effectiveCalorieGoal > 0 else { return 0 }
+        return min(s.total_calories / Double(effectiveCalorieGoal), 1.0)
     }
 
     var body: some View {
@@ -144,6 +150,7 @@ struct FoodView: View {
                     }
                 }
             }
+            .errorAlert($error)
             .sheet(isPresented: $showAddSheet, onDismiss: {
                 Task { await refreshData() }
             }) {
@@ -158,10 +165,14 @@ struct FoodView: View {
     }
 
     func refreshData() async {
-        async let s = NetworkManager.shared.getTodaySummary()
-        async let m = NetworkManager.shared.getMealHistory()
-        summary = try? await s
-        meals = (try? await m) ?? []
+        do {
+            async let s = NetworkManager.shared.getTodaySummary()
+            async let m = NetworkManager.shared.getMealHistory()
+            summary = try await s
+            meals = try await m
+        } catch {
+            self.error = AppError(error)
+        }
     }
 }
 
@@ -170,7 +181,7 @@ struct CalorieRingRow: View {
     let summary: DailySummaryResponse?
     let progress: Double
 
-    var calGoal: Int { summary?.calorie_goal ?? 2200 }
+    var calGoal: Int { summary?.calorie_goal ?? ProfileSettings.shared.calorieGoal }
     var calEaten: Int { Int(summary?.total_calories ?? 0) }
     var calLeft: Int { max(0, calGoal - calEaten) }
 

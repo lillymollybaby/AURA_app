@@ -64,16 +64,42 @@ struct LanguagesView: View {
     }
 }
 
+// MARK: - Language Config
+struct LanguageConfig {
+    let code: String
+    let name: String
+    let flag: String
+    let levels: [String]
+
+    static let all: [LanguageConfig] = [
+        LanguageConfig(code: "German",   name: "German",   flag: "🇩🇪", levels: ["A1","A2","B1","B2","C1","C2"]),
+        LanguageConfig(code: "English",  name: "English",  flag: "🇬🇧", levels: ["A1","A2","B1","B2","C1","C2"]),
+        LanguageConfig(code: "French",   name: "French",   flag: "🇫🇷", levels: ["A1","A2","B1","B2","C1","C2"]),
+        LanguageConfig(code: "Spanish",  name: "Spanish",  flag: "🇪🇸", levels: ["A1","A2","B1","B2","C1","C2"]),
+        LanguageConfig(code: "Italian",  name: "Italian",  flag: "🇮🇹", levels: ["A1","A2","B1","B2","C1","C2"]),
+        LanguageConfig(code: "Japanese", name: "Japanese", flag: "🇯🇵", levels: ["N5","N4","N3","N2","N1"]),
+        LanguageConfig(code: "Chinese",  name: "Chinese",  flag: "🇨🇳", levels: ["HSK1","HSK2","HSK3","HSK4","HSK5"]),
+        LanguageConfig(code: "Korean",   name: "Korean",   flag: "🇰🇷", levels: ["TOPIK1","TOPIK2","TOPIK3"]),
+    ]
+
+    static func find(_ code: String) -> LanguageConfig {
+        all.first { $0.code == code } ?? all[0]
+    }
+}
+
 // MARK: - Hero Card
 struct LanguageHeroCard: View {
     let streak: StreakResponse?
+    @ObservedObject private var settings = ProfileSettings.shared
+
+    var lang: LanguageConfig { LanguageConfig.find(settings.learningLanguage) }
 
     var body: some View {
         HStack(spacing: 16) {
-            Text("🇩🇪").font(.system(size: 44))
+            Text(lang.flag).font(.system(size: 44))
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("German").font(.title2).bold()
+                Text(lang.name).font(.title2).bold()
                 HStack(spacing: 6) {
                     Text("B1").font(.caption).bold()
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -675,5 +701,53 @@ struct RoundedCorner: Shape {
     func path(in rect: CGRect) -> Path {
         let path = UIBezierPath(roundedRect: rect, byRoundingCorners: corners, cornerRadii: CGSize(width: radius, height: radius))
         return Path(path.cgPath)
+    }
+}
+
+// MARK: - Language Picker Sheet
+struct LanguagePickerSheet: View {
+    @State private var selected: String
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) var dismiss
+
+    init(value: String, onSave: @escaping (String) -> Void) {
+        self._selected = State(initialValue: value)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(LanguageConfig.all, id: \.code) { lang in
+                    Button {
+                        selected = lang.code
+                    } label: {
+                        HStack(spacing: 14) {
+                            Text(lang.flag).font(.title2)
+                            Text(lang.name)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if selected == lang.code {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.blue)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Язык обучения")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Сохранить") { onSave(selected); dismiss() }
+                        .fontWeight(.semibold)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") { dismiss() }
+                }
+            }
+        }
     }
 }
