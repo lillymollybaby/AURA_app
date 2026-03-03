@@ -47,7 +47,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 // MARK: - 2GIS Direct API
 class TwoGISService {
     static let shared = TwoGISService()
-    private let apiKey = "a98beecb-a8c9-4dc4-a38f-e4a838ce92ef"
+    private var apiKey: String { APIConfig.twoGISApiKey }
 
     struct CatalogResponse: Codable {
         let result: CatalogResult?
