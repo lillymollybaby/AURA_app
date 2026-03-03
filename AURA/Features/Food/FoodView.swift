@@ -11,6 +11,9 @@ struct FoodView: View {
     @State private var isLoadingIdeas = false
     @State private var isLoading = true
     @State private var showManualAdd = false
+    @State private var showFridge = false
+    @State private var showRecipes = false
+    @State private var showShoppingList = false
 
     var effectiveCalorieGoal: Int {
         summary?.calorie_goal ?? ProfileSettings.shared.calorieGoal
@@ -91,6 +94,15 @@ struct FoodView: View {
                     ManualAddFoodView(onAdd: { _ in Task { await refreshData() } })
                 }
             }
+            .fullScreenCover(isPresented: $showFridge) {
+                FridgeView()
+            }
+            .fullScreenCover(isPresented: $showRecipes) {
+                RecipesView()
+            }
+            .fullScreenCover(isPresented: $showShoppingList) {
+                ShoppingListView()
+            }
             .task { await refreshData() }
             .refreshable { await refreshData() }
         }
@@ -161,14 +173,14 @@ struct FoodView: View {
     // MARK: - Quick Actions
     private var quickActionsRow: some View {
         HStack(spacing: 12) {
-            QuickActionButton(title: "Фото", icon: "camera.fill", color: .blue) {
-                showAddSheet = true
+            QuickActionButton(title: "Холодильник", icon: "refrigerator.fill", color: .cyan) {
+                showFridge = true
             }
-            QuickActionButton(title: "Вручную", icon: "pencil.line", color: .green) {
-                showManualAdd = true
+            QuickActionButton(title: "Рецепты", icon: "book.fill", color: .orange) {
+                showRecipes = true
             }
-            QuickActionButton(title: "Скан", icon: "barcode.viewfinder", color: .purple) {
-                showScanSheet = true
+            QuickActionButton(title: "Покупки", icon: "cart.fill", color: .purple) {
+                showShoppingList = true
             }
         }
         .padding(.horizontal)
