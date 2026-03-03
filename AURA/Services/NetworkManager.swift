@@ -25,10 +25,18 @@ struct DailySummaryResponse: Codable {
     let total_carbs: Double
     let meals: [MealResponse]?
     let ai_advice: String?
-    let calorie_goal: Int?      // реальная цель с сервера (может отсутствовать)
+    let calorie_goal: Int?
     let protein_goal: Int?
     let fat_goal: Int?
     let carbs_goal: Int?
+
+    // API возвращает singular (total_protein), а мы храним plural (total_proteins)
+    enum CodingKeys: String, CodingKey {
+        case date, total_calories, total_carbs, meals, ai_advice
+        case calorie_goal, protein_goal, fat_goal, carbs_goal
+        case total_proteins = "total_protein"
+        case total_fats = "total_fat"
+    }
 
     // Обратная совместимость
     var total_protein: Double { total_proteins }

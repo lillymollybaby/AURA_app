@@ -9,9 +9,9 @@ struct FoodView: View {
     @State private var error: AppError?
     @State private var dinnerIdeas: String?
     @State private var isLoadingIdeas = false
-    @State private var showDinnerIdeas = false
+    @State private var isLoading = true
+    @State private var showManualAdd = false
 
-    // Приоритет: сервер → ProfileSettings → дефолт 2200
     var effectiveCalorieGoal: Int {
         summary?.calorie_goal ?? ProfileSettings.shared.calorieGoal
     }
@@ -23,130 +23,55 @@ struct FoodView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                // MARK: Calorie Ring
-                Section {
-                    CalorieRingRow(summary: summary, progress: progress)
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                }
+            ScrollView {
+                VStack(spacing: 20) {
 
-                // MARK: Macros
-                Section {
-                    MacroRow(label: "Белки", value: summary?.total_proteins ?? 0, goal: 150, color: .blue, unit: "г")
-                    MacroRow(label: "Углеводы", value: summary?.total_carbs ?? 0, goal: 250, color: .orange, unit: "г")
-                    MacroRow(label: "Жиры", value: summary?.total_fats ?? 0, goal: 70, color: .pink, unit: "г")
-                } header: {
-                    Text("Макронутриенты")
-                }
+                    // MARK: - Калории — главная карточка
+                    calorieCard
+                    
+                    // MARK: - Макронутриенты
+                    macrosCard
 
-                // MARK: Quick Add
-                Section {
-                    Button {
-                        showAddSheet = true
-                    } label: {
-                        Label("Сфотографировать еду", systemImage: "camera")
+                    // MARK: - Быстрые действия
+                    quickActionsRow
+
+                    // MARK: - AI Совет
+                    if let advice = summary?.ai_advice, !advice.isEmpty {
+                        aiAdviceCard(advice)
                     }
 
-                    NavigationLink {
-                        ManualAddFoodView(onAdd: { _ in Task { await refreshData() } })
-                    } label: {
-                        Label("Добавить вручную", systemImage: "square.and.pencil")
+                    // MARK: - Приёмы пищи
+                    if !meals.isEmpty {
+                        mealsSection
                     }
 
-                    Button {
-                        showScanSheet = true
-                    } label: {
-                        Label("Сканировать этикетку", systemImage: "barcode.viewfinder")
-                    }
-                } header: {
-                    Text("Добавить")
-                }
+                    // MARK: - Идеи для ужина
+                    dinnerIdeasCard
 
-                // MARK: AI Advice
-                if let advice = summary?.ai_advice, !advice.isEmpty {
-                    Section {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "sparkles")
-                                .foregroundStyle(.yellow)
-                                .font(.body)
-                            Text(advice)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                    } header: {
-                        Text("Совет дня")
-                    }
-                }
-
-                // MARK: Today's Meals
-                if !meals.isEmpty {
-                    Section {
-                        ForEach(meals) { meal in
-                            MealListRow(meal: meal)
-                        }
-                        .onDelete { indexSet in
-                            for i in indexSet {
-                                let id = meals[i].id
-                                Task {
-                                    try? await NetworkManager.shared.deleteMeal(id: id)
-                                    await refreshData()
-                                }
-                            }
-                        }
-                    } header: {
-                        Text("Сегодня")
-                    }
-                }
-
-                // MARK: Dinner Ideas
-                Section {
-                    if let ideas = dinnerIdeas {
-                        Text(ideas)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Button {
-                            isLoadingIdeas = true
-                            Task {
-                                if let r = try? await NetworkManager.shared.getDinnerIdeas() {
-                                    dinnerIdeas = r.ideas
-                                }
-                                isLoadingIdeas = false
-                            }
-                        } label: {
-                            if isLoadingIdeas {
-                                HStack {
-                                    ProgressView().padding(.trailing, 4)
-                                    Text("Генерируем...")
-                                }
-                            } else {
-                                Label("Идеи для ужина от AI", systemImage: "wand.and.stars")
-                            }
-                        }
-                        .disabled(isLoadingIdeas)
-                    }
-                } header: {
-                    Text("Ужин")
-                }
-
-                // MARK: Health Sync
-                Section {
+                    // MARK: - Health Sync
                     HealthSyncCard()
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                } header: {
-                    Text("Apple Health")
+                        .padding(.horizontal)
                 }
+                .padding(.vertical)
             }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("Food")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showScanSheet = true
+                    Menu {
+                        Button { showAddSheet = true } label: {
+                            Label("Фото еды", systemImage: "camera")
+                        }
+                        Button { showManualAdd = true } label: {
+                            Label("Вручную", systemImage: "square.and.pencil")
+                        }
+                        Button { showScanSheet = true } label: {
+                            Label("Сканировать", systemImage: "barcode.viewfinder")
+                        }
                     } label: {
-                        Image(systemName: "barcode.viewfinder")
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
                     }
                 }
             }
@@ -159,9 +84,207 @@ struct FoodView: View {
             .sheet(isPresented: $showScanSheet) {
                 ScanDecideView()
             }
+            .sheet(isPresented: $showManualAdd, onDismiss: {
+                Task { await refreshData() }
+            }) {
+                NavigationStack {
+                    ManualAddFoodView(onAdd: { _ in Task { await refreshData() } })
+                }
+            }
             .task { await refreshData() }
             .refreshable { await refreshData() }
         }
+    }
+
+    // MARK: - Calorie Card
+    private var calorieCard: some View {
+        let calGoal = effectiveCalorieGoal
+        let calEaten = Int(summary?.total_calories ?? 0)
+        let calLeft = max(0, calGoal - calEaten)
+
+        return VStack(spacing: 16) {
+            // Ring
+            ZStack {
+                Circle()
+                    .stroke(Color(.systemGray5), lineWidth: 14)
+                    .frame(width: 140, height: 140)
+
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(
+                        AngularGradient(
+                            colors: [.green, .mint, .cyan, .blue],
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 14, lineCap: .round)
+                    )
+                    .frame(width: 140, height: 140)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.spring(response: 1.0, dampingFraction: 0.7), value: progress)
+
+                VStack(spacing: 2) {
+                    Text("\(calLeft)")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .contentTransition(.numericText())
+                    Text("осталось")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Stats row
+            HStack(spacing: 0) {
+                CalorieStat(value: "\(calGoal)", label: "Цель", icon: "target", color: .blue)
+                CalorieStat(value: "\(calEaten)", label: "Съедено", icon: "flame.fill", color: .orange)
+                CalorieStat(value: "\(calLeft)", label: "Осталось", icon: "leaf.fill", color: .green)
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+        )
+        .padding(.horizontal)
+    }
+
+    // MARK: - Macros Card
+    private var macrosCard: some View {
+        HStack(spacing: 12) {
+            MacroPill(label: "Белки", value: summary?.total_proteins ?? 0, goal: Double(summary?.protein_goal ?? 150), color: .blue, icon: "fish.fill")
+            MacroPill(label: "Углеводы", value: summary?.total_carbs ?? 0, goal: Double(summary?.carbs_goal ?? 250), color: .orange, icon: "leaf.fill")
+            MacroPill(label: "Жиры", value: summary?.total_fats ?? 0, goal: Double(summary?.fat_goal ?? 70), color: .purple, icon: "drop.fill")
+        }
+        .padding(.horizontal)
+    }
+
+    // MARK: - Quick Actions
+    private var quickActionsRow: some View {
+        HStack(spacing: 12) {
+            QuickActionButton(title: "Фото", icon: "camera.fill", color: .blue) {
+                showAddSheet = true
+            }
+            QuickActionButton(title: "Вручную", icon: "pencil.line", color: .green) {
+                showManualAdd = true
+            }
+            QuickActionButton(title: "Скан", icon: "barcode.viewfinder", color: .purple) {
+                showScanSheet = true
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    // MARK: - AI Advice
+    private func aiAdviceCard(_ advice: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.title3)
+                .foregroundStyle(.yellow)
+                .frame(width: 36, height: 36)
+                .background(Color.yellow.opacity(0.12))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Совет AI")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                Text(advice)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+            }
+            Spacer()
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
+        )
+        .padding(.horizontal)
+    }
+
+    // MARK: - Meals Section
+    private var mealsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Сегодня")
+                    .font(.headline)
+                Spacer()
+                Text("\(meals.count) приёмов")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal)
+
+            VStack(spacing: 8) {
+                ForEach(meals) { meal in
+                    MealCard(meal: meal, onDelete: {
+                        Task {
+                            try? await NetworkManager.shared.deleteMeal(id: meal.id)
+                            await refreshData()
+                        }
+                    })
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+
+    // MARK: - Dinner Ideas
+    private var dinnerIdeasCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let ideas = dinnerIdeas {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.title3)
+                        .foregroundStyle(.indigo)
+                        .frame(width: 36, height: 36)
+                        .background(Color.indigo.opacity(0.12))
+                        .clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Идеи для ужина")
+                            .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
+                        Text(ideas).font(.subheadline)
+                    }
+                    Spacer()
+                }
+            } else {
+                Button {
+                    isLoadingIdeas = true
+                    Task {
+                        if let r = try? await NetworkManager.shared.getDinnerIdeas() {
+                            dinnerIdeas = r.ideas
+                        }
+                        isLoadingIdeas = false
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        if isLoadingIdeas {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "wand.and.stars")
+                                .foregroundStyle(.indigo)
+                        }
+                        Text(isLoadingIdeas ? "Генерируем..." : "Идеи для ужина от AI")
+                            .font(.subheadline).fontWeight(.medium)
+                        Spacer()
+                        if !isLoadingIdeas {
+                            Image(systemName: "chevron.right")
+                                .font(.caption).foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .disabled(isLoadingIdeas)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
+        )
+        .padding(.horizontal)
     }
 
     func refreshData() async {
@@ -170,130 +293,156 @@ struct FoodView: View {
             async let m = NetworkManager.shared.getMealHistory()
             summary = try await s
             meals = try await m
+            isLoading = false
         } catch {
+            isLoading = false
             self.error = AppError(error)
         }
     }
 }
 
-// MARK: - Calorie Ring Row
-struct CalorieRingRow: View {
-    let summary: DailySummaryResponse?
-    let progress: Double
-
-    var calGoal: Int { summary?.calorie_goal ?? ProfileSettings.shared.calorieGoal }
-    var calEaten: Int { Int(summary?.total_calories ?? 0) }
-    var calLeft: Int { max(0, calGoal - calEaten) }
-
-    var ringColor: Color {
-        if progress > 0.95 { return .orange }
-        if progress > 0.75 { return .blue }
-        return .green
-    }
+// MARK: - Calorie Stat
+struct CalorieStat: View {
+    let value: String
+    let label: String
+    let icon: String
+    let color: Color
 
     var body: some View {
-        HStack(spacing: 24) {
-            // Ring
-            ZStack {
-                Circle()
-                    .stroke(Color(.systemFill), lineWidth: 12)
-                    .frame(width: 90, height: 90)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(ringColor, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                    .frame(width: 90, height: 90)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.spring(response: 0.8), value: progress)
-                VStack(spacing: 1) {
-                    Text("\(calEaten)")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                    Text("ккал")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            // Stats
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "target").foregroundStyle(.blue).font(.caption)
-                    Text("Цель: \(calGoal) ккал").font(.subheadline)
-                }
-                HStack {
-                    Image(systemName: "checkmark.circle").foregroundStyle(.green).font(.caption)
-                    Text("Съедено: \(calEaten) ккал").font(.subheadline)
-                }
-                HStack {
-                    Image(systemName: calLeft == 0 ? "exclamationmark.circle" : "minus.circle")
-                        .foregroundStyle(calLeft == 0 ? .orange : .secondary).font(.caption)
-                    Text("Осталось: \(calLeft) ккал").font(.subheadline)
-                        .foregroundStyle(calLeft == 0 ? .orange : .primary)
-                }
-            }
-            Spacer()
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(color)
+            Text(value)
+                .font(.system(.subheadline, design: .rounded))
+                .fontWeight(.bold)
+                .monospacedDigit()
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .padding(.horizontal)
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
     }
 }
 
-// MARK: - Macro Row
-struct MacroRow: View {
+// MARK: - Macro Pill
+struct MacroPill: View {
     let label: String
     let value: Double
     let goal: Double
     let color: Color
-    let unit: String
+    let icon: String
 
-    var progress: Double { min(value / goal, 1.0) }
+    var pct: Double { goal > 0 ? min(value / goal, 1.0) : 0 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(label).font(.subheadline)
-                Spacer()
-                Text("\(Int(value)) / \(Int(goal)) \(unit)")
-                    .font(.subheadline)
+        VStack(spacing: 8) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption2)
+                    .foregroundStyle(color)
+                Text(label)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .monospacedDigit()
             }
-            ProgressView(value: progress)
-                .tint(color)
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(color.opacity(0.15))
+                    .frame(height: 6)
+                Capsule()
+                    .fill(color)
+                    .frame(width: max(6, CGFloat(pct) * 100), height: 6)
+                    .animation(.spring(response: 0.8), value: pct)
+            }
+
+            Text("\(Int(value))/\(Int(goal))г")
+                .font(.system(.caption2, design: .rounded))
+                .fontWeight(.semibold)
+                .monospacedDigit()
         }
-        .padding(.vertical, 2)
+        .padding(12)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
+        )
     }
 }
 
-// MARK: - Meal List Row
-struct MealListRow: View {
+// MARK: - Quick Action Button
+struct QuickActionButton: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 48, height: 48)
+                    .background(color.gradient)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(.systemBackground))
+                    .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Meal Card
+struct MealCard: View {
     let meal: MealResponse
+    let onDelete: () -> Void
 
     var mealIcon: String {
         switch meal.meal_type {
-        case "breakfast": return "sunrise"
-        case "lunch": return "sun.max"
-        case "dinner": return "moon.stars"
-        default: return "fork.knife"
+        case "breakfast": return "sunrise.fill"
+        case "lunch":     return "sun.max.fill"
+        case "dinner":    return "moon.stars.fill"
+        default:          return "fork.knife"
+        }
+    }
+
+    var mealColor: Color {
+        switch meal.meal_type {
+        case "breakfast": return .orange
+        case "lunch":     return .yellow
+        case "dinner":    return .indigo
+        default:          return .gray
         }
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Image(systemName: mealIcon)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .frame(width: 32)
+                .font(.body)
+                .foregroundStyle(mealColor)
+                .frame(width: 40, height: 40)
+                .background(mealColor.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(meal.name)
                     .font(.subheadline)
                     .fontWeight(.medium)
+                    .lineLimit(1)
                 if let tip = meal.ai_analysis, !tip.isEmpty {
                     Text(tip)
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -303,15 +452,25 @@ struct MealListRow: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(Int(meal.calories))")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+                    .font(.system(.subheadline, design: .rounded))
+                    .fontWeight(.bold)
                     .monospacedDigit()
                 Text("ккал")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 2)
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
+        )
+        .contextMenu {
+            Button(role: .destructive) { onDelete() } label: {
+                Label("Удалить", systemImage: "trash")
+            }
+        }
     }
 }
 
