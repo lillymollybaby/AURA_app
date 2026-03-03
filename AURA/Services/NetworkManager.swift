@@ -269,7 +269,7 @@ struct RecipeExploreResponse: Codable {
     let message: String?
 }
 
-struct RecipeCreate: Codable {
+struct RecipeCreate: Encodable {
     let name: String
     let description: String?
     let ingredients: [[String: AnyEncodable]]?
