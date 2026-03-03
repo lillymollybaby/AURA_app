@@ -1,40 +1,20 @@
 import SwiftUI
 
-// MARK: - Recipe Model
-struct Recipe: Identifiable {
-    let id = UUID()
-    let name: String
-    let image: String // SF Symbol
-    let calories: Int
-    let cookTime: Int // minutes
-    let category: RecipeCategory
-    let cuisine: String
-    let ingredients: [RecipeIngredient]
-    let isSaved: Bool
-
-    var availableCount: Int {
-        ingredients.filter { $0.inFridge }.count
-    }
-
-    var missingCount: Int {
-        ingredients.filter { !$0.inFridge }.count
-    }
-
-    var isFullyAvailable: Bool { missingCount == 0 }
-}
-
-struct RecipeIngredient: Identifiable {
-    let id = UUID()
-    let name: String
-    let amount: String
-    let inFridge: Bool
-}
-
+// MARK: - Recipe Category (UI display)
 enum RecipeCategory: String, CaseIterable {
     case breakfast = "Завтрак"
     case lunch = "Обед"
     case dinner = "Ужин"
     case snack = "Снеки"
+
+    var apiValue: String {
+        switch self {
+        case .breakfast: return "breakfast"
+        case .lunch:     return "lunch"
+        case .dinner:    return "dinner"
+        case .snack:     return "snack"
+        }
+    }
 
     var icon: String {
         switch self {
@@ -55,6 +35,39 @@ enum RecipeCategory: String, CaseIterable {
     }
 }
 
+// MARK: - RecipeResponse helpers
+extension RecipeResponse {
+    var recipeCategory: RecipeCategory {
+        switch category?.lowercased() {
+        case "breakfast": return .breakfast
+        case "lunch":     return .lunch
+        case "dinner":    return .dinner
+        case "snack":     return .snack
+        default:          return .dinner
+        }
+    }
+
+    var sfImage: String {
+        switch recipeCategory {
+        case .breakfast: return "frying.pan.fill"
+        case .lunch:     return "fork.knife"
+        case .dinner:    return "flame.fill"
+        case .snack:     return "cup.and.saucer.fill"
+        }
+    }
+
+    var availableCount: Int {
+        ingredients?.filter { $0.in_fridge == true }.count ?? 0
+    }
+
+    var missingCount: Int {
+        (ingredients?.count ?? 0) - availableCount
+    }
+
+    var isFullyAvailable: Bool { missingCount == 0 }
+}
+
+
 // MARK: - Recipes View
 struct RecipesView: View {
     @Environment(\.dismiss) var dismiss
@@ -63,7 +76,6 @@ struct RecipesView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Custom Tab Bar
                 tabBar
 
                 TabView(selection: $selectedTab) {
@@ -99,6 +111,7 @@ struct RecipesView: View {
     }
 }
 
+
 // MARK: - Tab Button
 struct RecipeTabButton: View {
     let title: String
@@ -123,9 +136,13 @@ struct RecipeTabButton: View {
     }
 }
 
+
 // MARK: - From Fridge Tab
 struct FromFridgeTab: View {
-    let recipes = Recipe.fromFridgeMock
+    @State private var recipes: [RecipeResponse] = []
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+    @State private var fridgeCount = 0
 
     var body: some View {
         ScrollView {
@@ -153,44 +170,82 @@ struct FromFridgeTab: View {
                         .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
                 )
 
-                ForEach(recipes) { recipe in
-                    FridgeRecipeCard(recipe: recipe)
+                if isLoading {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("AI генерирует рецепты...")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .padding(40)
+                } else if recipes.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "refrigerator")
+                            .font(.system(size: 48)).foregroundStyle(.tertiary)
+                        Text("Добавьте продукты в холодильник")
+                            .font(.headline).foregroundStyle(.secondary)
+                        Text("AI предложит рецепты из того что есть")
+                            .font(.subheadline).foregroundStyle(.tertiary)
+                    }
+                    .padding(40)
+                } else {
+                    ForEach(Array(recipes.enumerated()), id: \.element.name) { _, recipe in
+                        FridgeRecipeCard(recipe: recipe)
+                    }
                 }
             }
             .padding()
         }
+        .refreshable { await loadRecipes() }
+        .task { await loadRecipes() }
+    }
+
+    private func loadRecipes() async {
+        do {
+            let response = try await NetworkManager.shared.getRecipesFromFridge()
+            await MainActor.run {
+                recipes = response.recipes
+                fridgeCount = response.fridge_items_count ?? 0
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isLoading = false
+            }
+        }
     }
 }
 
+
 // MARK: - Fridge Recipe Card
 struct FridgeRecipeCard: View {
-    let recipe: Recipe
+    let recipe: RecipeResponse
+    @State private var isCooking = false
+    @State private var isSaving = false
+    @State private var cookResult: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             // Header
             HStack(spacing: 14) {
-                // Recipe icon
-                Image(systemName: recipe.image)
+                Image(systemName: recipe.sfImage)
                     .font(.title2)
                     .foregroundStyle(.white)
                     .frame(width: 56, height: 56)
-                    .background(recipe.category.color.gradient)
+                    .background(recipe.recipeCategory.color.gradient)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(recipe.name)
-                        .font(.headline)
+                    Text(recipe.name).font(.headline)
                     HStack(spacing: 12) {
-                        Label("\(recipe.calories) ккал", systemImage: "flame.fill")
+                        Label("\(recipe.calories ?? 0) ккал", systemImage: "flame.fill")
                             .font(.caption).foregroundStyle(.orange)
-                        Label("\(recipe.cookTime) мин", systemImage: "clock.fill")
+                        Label("\(recipe.cook_time ?? 0) мин", systemImage: "clock.fill")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
 
-                // Availability badge
                 if recipe.isFullyAvailable {
                     Text("Всё есть ✅")
                         .font(.caption2).fontWeight(.bold)
@@ -198,7 +253,7 @@ struct FridgeRecipeCard: View {
                         .background(Color.green.opacity(0.12))
                         .foregroundStyle(.green)
                         .clipShape(Capsule())
-                } else {
+                } else if recipe.missingCount > 0 {
                     Text("Не хватает \(recipe.missingCount)")
                         .font(.caption2).fontWeight(.bold)
                         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -208,43 +263,71 @@ struct FridgeRecipeCard: View {
                 }
             }
 
-            // Ingredients preview
-            FlowLayout(spacing: 6) {
-                ForEach(recipe.ingredients) { ing in
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(ing.inFridge ? Color.green : Color.gray.opacity(0.3))
-                            .frame(width: 6, height: 6)
-                        Text(ing.name)
-                            .font(.caption2)
-                            .foregroundStyle(ing.inFridge ? .primary : .secondary)
+            // Ingredients
+            if let ingredients = recipe.ingredients, !ingredients.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(Array(ingredients.enumerated()), id: \.element.name) { _, ing in
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(ing.in_fridge == true ? Color.green : Color.gray.opacity(0.3))
+                                .frame(width: 6, height: 6)
+                            Text(ing.name)
+                                .font(.caption2)
+                                .foregroundStyle(ing.in_fridge == true ? .primary : .secondary)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(ing.in_fridge == true ? Color.green.opacity(0.08) : Color(.systemGray6))
+                        .clipShape(Capsule())
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        ing.inFridge
-                        ? Color.green.opacity(0.08)
-                        : Color(.systemGray6)
-                    )
-                    .clipShape(Capsule())
                 }
             }
 
-            // Action Button
-            Button {
-                // Cook action
-            } label: {
-                HStack {
-                    Image(systemName: "frying.pan.fill")
-                    Text("Приготовить")
-                        .fontWeight(.semibold)
+            // Cook Result
+            if let result = cookResult {
+                Text(result)
+                    .font(.caption).foregroundStyle(.green)
+                    .padding(8)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.green.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
+            // Actions
+            HStack(spacing: 10) {
+                Button {
+                    saveRecipe()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isSaving ? "checkmark.circle.fill" : "heart")
+                        Text(isSaving ? "Сохранено" : "Сохранить")
+                            .fontWeight(.medium)
+                    }
+                    .font(.caption)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(isSaving ? Color.pink.opacity(0.12) : Color(.systemGray6))
+                    .foregroundStyle(isSaving ? .pink : .primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .font(.subheadline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(recipe.isFullyAvailable ? Color.green : Color.blue)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                Button {
+                    cookRecipeAction()
+                } label: {
+                    HStack(spacing: 4) {
+                        if isCooking {
+                            ProgressView().scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "frying.pan.fill")
+                        }
+                        Text("Приготовить").fontWeight(.semibold)
+                    }
+                    .font(.caption)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(recipe.isFullyAvailable ? Color.green : Color.blue)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
             }
         }
         .padding(16)
@@ -254,30 +337,72 @@ struct FridgeRecipeCard: View {
                 .shadow(color: .black.opacity(0.06), radius: 8, y: 3)
         )
     }
+
+    private func saveRecipe() {
+        Task {
+            do {
+                let create = RecipeCreate(
+                    name: recipe.name,
+                    description: recipe.description,
+                    ingredients: recipe.ingredients?.map { ing in
+                        [
+                            "name": AnyEncodable(ing.name),
+                            "amount": AnyEncodable(ing.amount ?? ""),
+                            "in_fridge": AnyEncodable(ing.in_fridge ?? false)
+                        ]
+                    },
+                    calories: recipe.calories ?? 0,
+                    proteins: recipe.proteins ?? 0,
+                    fats: recipe.fats ?? 0,
+                    carbs: recipe.carbs ?? 0,
+                    cook_time: recipe.cook_time ?? 0,
+                    category: recipe.category,
+                    cuisine: recipe.cuisine,
+                    image_url: nil,
+                    source: "ai"
+                )
+                _ = try await NetworkManager.shared.saveRecipe(create)
+                await MainActor.run { isSaving = true }
+            } catch {
+                print("Save error: \(error)")
+            }
+        }
+    }
+
+    private func cookRecipeAction() {
+        guard let id = recipe.id else { return }
+        isCooking = true
+        Task {
+            do {
+                let result = try await NetworkManager.shared.cookRecipe(id: id)
+                await MainActor.run {
+                    isCooking = false
+                    cookResult = result.message
+                }
+            } catch {
+                await MainActor.run { isCooking = false }
+            }
+        }
+    }
 }
+
 
 // MARK: - Explore Tab
 struct ExploreTab: View {
     @State private var selectedCategory: RecipeCategory? = nil
     @State private var searchText = ""
-    let recipes = Recipe.exploreMock
-
-    var filteredRecipes: [Recipe] {
-        var result = recipes
-        if let cat = selectedCategory { result = result.filter { $0.category == cat } }
-        if !searchText.isEmpty { result = result.filter { $0.name.localizedCaseInsensitiveContains(searchText) } }
-        return result
-    }
+    @State private var recipes: [RecipeResponse] = []
+    @State private var isLoading = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 // Search
                 HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Поиск рецептов...", text: $searchText)
                         .font(.subheadline)
+                        .onSubmit { loadRecipes() }
                 }
                 .padding(12)
                 .background(Color(.systemBackground))
@@ -289,6 +414,7 @@ struct ExploreTab: View {
                         ForEach(RecipeCategory.allCases, id: \.self) { cat in
                             Button {
                                 selectedCategory = selectedCategory == cat ? nil : cat
+                                loadRecipes()
                             } label: {
                                 VStack(spacing: 6) {
                                     Image(systemName: cat.icon)
@@ -308,95 +434,127 @@ struct ExploreTab: View {
                     }
                 }
 
-                // Recipe Cards
-                ForEach(filteredRecipes) { recipe in
-                    ExploreRecipeCard(recipe: recipe)
+                if isLoading {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("AI ищет рецепты...")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .padding(40)
+                } else if recipes.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 40)).foregroundStyle(.tertiary)
+                        Text("Выберите категорию или\nвведите запрос для поиска")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(40)
+                } else {
+                    ForEach(Array(recipes.enumerated()), id: \.element.name) { _, recipe in
+                        ExploreRecipeCard(recipe: recipe)
+                    }
                 }
             }
             .padding()
         }
+        .task { loadRecipes() }
+    }
+
+    private func loadRecipes() {
+        isLoading = true
+        Task {
+            do {
+                let response = try await NetworkManager.shared.exploreRecipes(
+                    category: selectedCategory?.apiValue,
+                    query: searchText.isEmpty ? nil : searchText
+                )
+                await MainActor.run {
+                    recipes = response.recipes
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run { isLoading = false }
+            }
+        }
     }
 }
 
+
 // MARK: - Explore Recipe Card
 struct ExploreRecipeCard: View {
-    let recipe: Recipe
+    let recipe: RecipeResponse
+    @State private var addedToShopping = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header
             HStack(spacing: 14) {
-                Image(systemName: recipe.image)
+                Image(systemName: recipe.sfImage)
                     .font(.title3)
                     .foregroundStyle(.white)
                     .frame(width: 50, height: 50)
-                    .background(recipe.category.color.gradient)
+                    .background(recipe.recipeCategory.color.gradient)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(recipe.name).font(.subheadline).fontWeight(.semibold)
                     HStack(spacing: 10) {
-                        Label("\(recipe.calories) ккал", systemImage: "flame.fill")
+                        Label("\(recipe.calories ?? 0) ккал", systemImage: "flame.fill")
                             .font(.caption2).foregroundStyle(.orange)
-                        Label("\(recipe.cookTime) мин", systemImage: "clock.fill")
+                        Label("\(recipe.cook_time ?? 0) мин", systemImage: "clock.fill")
                             .font(.caption2).foregroundStyle(.secondary)
-                        Text(recipe.cuisine)
-                            .font(.caption2)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Color(.systemGray5))
-                            .clipShape(Capsule())
+                        if let cuisine = recipe.cuisine {
+                            Text(cuisine)
+                                .font(.caption2)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color(.systemGray5))
+                                .clipShape(Capsule())
+                        }
                     }
                 }
                 Spacer()
             }
 
             // Ingredients
-            VStack(spacing: 6) {
-                ForEach(recipe.ingredients) { ing in
-                    HStack(spacing: 10) {
-                        Image(systemName: ing.inFridge ? "checkmark.circle.fill" : "circle")
-                            .font(.caption)
-                            .foregroundStyle(ing.inFridge ? .green : .gray.opacity(0.4))
-                        Text(ing.name)
-                            .font(.caption)
-                            .foregroundStyle(ing.inFridge ? .primary : .secondary)
-                        Spacer()
-                        Text(ing.amount)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        if !ing.inFridge {
-                            Button {
-                                // add to shopping list
-                            } label: {
-                                Image(systemName: "cart.badge.plus")
-                                    .font(.caption2)
-                                    .foregroundStyle(.blue)
-                            }
+            if let ingredients = recipe.ingredients, !ingredients.isEmpty {
+                VStack(spacing: 6) {
+                    ForEach(Array(ingredients.enumerated()), id: \.element.name) { _, ing in
+                        HStack(spacing: 10) {
+                            Image(systemName: ing.in_fridge == true ? "checkmark.circle.fill" : "circle")
+                                .font(.caption)
+                                .foregroundStyle(ing.in_fridge == true ? .green : .gray.opacity(0.4))
+                            Text(ing.name)
+                                .font(.caption)
+                                .foregroundStyle(ing.in_fridge == true ? .primary : .secondary)
+                            Spacer()
+                            Text(ing.amount ?? "")
+                                .font(.caption2).foregroundStyle(.secondary)
                         }
                     }
                 }
+                .padding(12)
+                .background(Color(.systemGray6).opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(12)
-            .background(Color(.systemGray6).opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
 
-            // Actions
+            // Add missing to shopping
             if recipe.missingCount > 0 {
                 Button {
-                    // add all missing to shopping list
+                    addMissingToShopping()
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "cart.fill.badge.plus")
-                        Text("Добавить \(recipe.missingCount) в список покупок")
+                        Image(systemName: addedToShopping ? "checkmark.circle.fill" : "cart.fill.badge.plus")
+                        Text(addedToShopping ? "Добавлено в список!" : "Добавить \(recipe.missingCount) в список покупок")
                             .fontWeight(.medium)
                     }
                     .font(.caption)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    .background(Color.blue.opacity(0.1))
-                    .foregroundStyle(.blue)
+                    .background(addedToShopping ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
+                    .foregroundStyle(addedToShopping ? .green : .blue)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
+                .disabled(addedToShopping)
             }
         }
         .padding(16)
@@ -406,87 +564,112 @@ struct ExploreRecipeCard: View {
                 .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
         )
     }
+
+    private func addMissingToShopping() {
+        guard let id = recipe.id else { return }
+        Task {
+            do {
+                _ = try await NetworkManager.shared.addMissingToShopping(recipeId: id)
+                await MainActor.run { addedToShopping = true }
+            } catch {
+                print("Add to shopping error: \(error)")
+            }
+        }
+    }
 }
+
 
 // MARK: - My Recipes Tab
 struct MyRecipesTab: View {
-    let saved = Recipe.savedMock
+    @State private var saved: [RecipeResponse] = []
+    @State private var isLoading = true
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                if saved.isEmpty {
+                if isLoading {
+                    ProgressView("Загрузка...").padding(40)
+                } else if saved.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "heart.slash")
                             .font(.system(size: 48)).foregroundStyle(.tertiary)
                         Text("Нет сохранённых рецептов")
                             .font(.headline).foregroundStyle(.secondary)
-                        Text("Сохраняйте рецепты из Explore\nили добавьте свои")
+                        Text("Сохраняйте рецепты из Explore\nили из холодильника")
                             .font(.subheadline).foregroundStyle(.tertiary)
                             .multilineTextAlignment(.center)
                     }
                     .padding(60)
                 } else {
                     ForEach(saved) { recipe in
-                        SavedRecipeCard(recipe: recipe)
-                    }
-                }
-
-                // Add Custom Recipe Button
-                Button {
-                    // add own recipe
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title3)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Добавить свой рецепт")
-                                .font(.subheadline).fontWeight(.semibold)
-                            Text("С фото и ингредиентами")
-                                .font(.caption).foregroundStyle(.secondary)
+                        SavedRecipeCard(recipe: recipe) {
+                            unsaveRecipe(recipe)
                         }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption).foregroundStyle(.tertiary)
                     }
-                    .padding(16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .strokeBorder(Color.blue.opacity(0.3), style: StrokeStyle(lineWidth: 1.5, dash: [8]))
-                    )
                 }
-                .buttonStyle(.plain)
             }
             .padding()
+        }
+        .refreshable { await loadSaved() }
+        .task { await loadSaved() }
+    }
+
+    private func loadSaved() async {
+        do {
+            let fetched = try await NetworkManager.shared.getSavedRecipes()
+            await MainActor.run {
+                saved = fetched
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run { isLoading = false }
+        }
+    }
+
+    private func unsaveRecipe(_ recipe: RecipeResponse) {
+        guard let id = recipe.id else { return }
+        Task {
+            do {
+                try await NetworkManager.shared.unsaveRecipe(id: id)
+                await MainActor.run {
+                    saved.removeAll { $0.id == id }
+                }
+            } catch {
+                print("Unsave error: \(error)")
+            }
         }
     }
 }
 
+
 // MARK: - Saved Recipe Card
 struct SavedRecipeCard: View {
-    let recipe: Recipe
+    let recipe: RecipeResponse
+    let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: recipe.image)
+            Image(systemName: recipe.sfImage)
                 .font(.title3)
                 .foregroundStyle(.white)
                 .frame(width: 50, height: 50)
-                .background(recipe.category.color.gradient)
+                .background(recipe.recipeCategory.color.gradient)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(recipe.name).font(.subheadline).fontWeight(.medium)
                 HStack(spacing: 8) {
-                    Label("\(recipe.calories) ккал", systemImage: "flame.fill")
+                    Label("\(recipe.calories ?? 0) ккал", systemImage: "flame.fill")
                         .font(.caption2).foregroundStyle(.orange)
-                    Label("\(recipe.cookTime) мин", systemImage: "clock.fill")
+                    Label("\(recipe.cook_time ?? 0) мин", systemImage: "clock.fill")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
             Spacer()
-            Image(systemName: "heart.fill")
-                .foregroundStyle(.pink)
+            Button { onDelete() } label: {
+                Image(systemName: "heart.fill")
+                    .foregroundStyle(.pink)
+            }
         }
         .padding(14)
         .background(
@@ -496,6 +679,7 @@ struct SavedRecipeCard: View {
         )
     }
 }
+
 
 // MARK: - Flow Layout
 struct FlowLayout: Layout {
@@ -534,60 +718,5 @@ struct FlowLayout: Layout {
             totalHeight = y + rowHeight
         }
         return (positions, CGSize(width: maxWidth, height: totalHeight))
-    }
-}
-
-// MARK: - Mock Data
-extension Recipe {
-    static var fromFridgeMock: [Recipe] {
-        [
-            Recipe(name: "Омлет со шпинатом и сыром", image: "frying.pan.fill", calories: 320, cookTime: 15, category: .breakfast, cuisine: "Европейская", ingredients: [
-                .init(name: "Яйца", amount: "3 шт", inFridge: true),
-                .init(name: "Шпинат", amount: "100г", inFridge: true),
-                .init(name: "Сыр Маасдам", amount: "50г", inFridge: true),
-                .init(name: "Молоко", amount: "50мл", inFridge: true),
-            ], isSaved: false),
-            Recipe(name: "Куриный стир-фрай с брокколи", image: "flame.fill", calories: 410, cookTime: 25, category: .lunch, cuisine: "Азиатская", ingredients: [
-                .init(name: "Куриная грудка", amount: "200г", inFridge: true),
-                .init(name: "Брокколи", amount: "150г", inFridge: true),
-                .init(name: "Рис басмати", amount: "100г", inFridge: true),
-                .init(name: "Соевый соус", amount: "2 ст.л.", inFridge: false),
-            ], isSaved: false),
-            Recipe(name: "Салат с помидорами и огурцами", image: "leaf.fill", calories: 180, cookTime: 10, category: .snack, cuisine: "Русская", ingredients: [
-                .init(name: "Помидоры", amount: "2 шт", inFridge: true),
-                .init(name: "Огурцы", amount: "2 шт", inFridge: true),
-                .init(name: "Оливковое масло", amount: "1 ст.л.", inFridge: true),
-            ], isSaved: false),
-        ]
-    }
-
-    static var exploreMock: [Recipe] {
-        [
-            Recipe(name: "Паста Карбонара", image: "fork.knife", calories: 520, cookTime: 30, category: .dinner, cuisine: "Итальянская", ingredients: [
-                .init(name: "Спагетти", amount: "200г", inFridge: false),
-                .init(name: "Яйца", amount: "2 шт", inFridge: true),
-                .init(name: "Сыр Пармезан", amount: "80г", inFridge: false),
-                .init(name: "Бекон", amount: "150г", inFridge: false),
-            ], isSaved: false),
-            Recipe(name: "Греческий салат", image: "leaf.fill", calories: 250, cookTime: 15, category: .lunch, cuisine: "Греческая", ingredients: [
-                .init(name: "Помидоры", amount: "2 шт", inFridge: true),
-                .init(name: "Огурцы", amount: "1 шт", inFridge: true),
-                .init(name: "Фета", amount: "100г", inFridge: false),
-                .init(name: "Оливки", amount: "50г", inFridge: false),
-                .init(name: "Оливковое масло", amount: "2 ст.л.", inFridge: true),
-            ], isSaved: false),
-            Recipe(name: "Овсяная каша с бананом", image: "cup.and.saucer.fill", calories: 350, cookTime: 10, category: .breakfast, cuisine: "Мировая", ingredients: [
-                .init(name: "Овсяные хлопья", amount: "80г", inFridge: false),
-                .init(name: "Молоко", amount: "200мл", inFridge: true),
-                .init(name: "Банан", amount: "1 шт", inFridge: true),
-            ], isSaved: false),
-        ]
-    }
-
-    static var savedMock: [Recipe] {
-        [
-            Recipe(name: "Омлет со шпинатом и сыром", image: "frying.pan.fill", calories: 320, cookTime: 15, category: .breakfast, cuisine: "Европейская", ingredients: [], isSaved: true),
-            Recipe(name: "Салат с помидорами", image: "leaf.fill", calories: 180, cookTime: 10, category: .snack, cuisine: "Русская", ingredients: [], isSaved: true),
-        ]
     }
 }

@@ -1,15 +1,6 @@
 import SwiftUI
 
-// MARK: - Shopping Item Model
-struct ShoppingItem: Identifiable {
-    let id = UUID()
-    let name: String
-    let amount: String
-    let category: ShoppingCategory
-    var isChecked: Bool
-    let fromRecipe: String? // nil = added manually
-}
-
+// MARK: - Shopping Category (UI)
 enum ShoppingCategory: String, CaseIterable {
     case vegetables = "Овощи и фрукты"
     case meat = "Мясо и рыба"
@@ -46,53 +37,87 @@ enum ShoppingCategory: String, CaseIterable {
         case .other:      return 4
         }
     }
+
+    var apiValue: String {
+        switch self {
+        case .vegetables: return "vegetables"
+        case .meat:       return "meat"
+        case .dairy:      return "dairy"
+        case .grains:     return "grains"
+        case .other:      return "other"
+        }
+    }
+
+    static func from(api value: String?) -> ShoppingCategory {
+        guard let value = value?.lowercased() else { return .other }
+        switch value {
+        case "vegetables": return .vegetables
+        case "meat":       return .meat
+        case "dairy":      return .dairy
+        case "grains":     return .grains
+        default:           return .other
+        }
+    }
+}
+
+// MARK: - ShoppingItemResponse Extensions
+extension ShoppingItemResponse {
+    var shoppingCategory: ShoppingCategory {
+        ShoppingCategory.from(api: category)
+    }
 }
 
 // MARK: - Shopping List View
 struct ShoppingListView: View {
     @Environment(\.dismiss) var dismiss
-    @State private var items: [ShoppingItem] = ShoppingItem.mockData
+
+    @State private var items: [ShoppingItemResponse] = []
+    @State private var isLoading = true
     @State private var showAddSheet = false
     @State private var selectedSection = 0
+    @State private var errorMessage: String?
+    @State private var showError = false
+    @State private var isTransferring = false
+    @State private var transferMessage: String?
 
-    var needToBuy: [ShoppingItem] {
-        items.filter { !$0.isChecked && $0.fromRecipe == nil }
-            .sorted { $0.category.sortOrder < $1.category.sortOrder }
+    // MARK: - Computed sections
+    var needToBuy: [ShoppingItemResponse] {
+        items.filter { !$0.is_checked && $0.from_recipe == nil }
+            .sorted { ShoppingCategory.from(api: $0.category).sortOrder < ShoppingCategory.from(api: $1.category).sortOrder }
     }
 
-    var fromRecipes: [ShoppingItem] {
-        items.filter { !$0.isChecked && $0.fromRecipe != nil }
-            .sorted { $0.category.sortOrder < $1.category.sortOrder }
+    var fromRecipes: [ShoppingItemResponse] {
+        items.filter { !$0.is_checked && $0.from_recipe != nil }
+            .sorted { ShoppingCategory.from(api: $0.category).sortOrder < ShoppingCategory.from(api: $1.category).sortOrder }
     }
 
-    var bought: [ShoppingItem] {
-        items.filter { $0.isChecked }
+    var bought: [ShoppingItemResponse] {
+        items.filter { $0.is_checked }
     }
 
-    var totalItems: Int { items.filter { !$0.isChecked }.count }
-    var checkedItems: Int { items.filter { $0.isChecked }.count }
+    var totalItems: Int { items.filter { !$0.is_checked }.count }
+    var checkedItems: Int { items.filter { $0.is_checked }.count }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
+                    if isLoading {
+                        loadingView
+                    } else {
+                        // MARK: - Progress Header
+                        progressHeader
 
-                    // MARK: - Progress Header
-                    progressHeader
+                        // MARK: - Section Picker
+                        sectionPicker
 
-                    // MARK: - Section Picker
-                    sectionPicker
-
-                    // MARK: - Content
-                    switch selectedSection {
-                    case 0:
-                        needToBuySection
-                    case 1:
-                        fromRecipesSection
-                    case 2:
-                        boughtSection
-                    default:
-                        EmptyView()
+                        // MARK: - Content
+                        switch selectedSection {
+                        case 0:  needToBuySection
+                        case 1:  fromRecipesSection
+                        case 2:  boughtSection
+                        default: EmptyView()
+                        }
                     }
                 }
                 .padding(.vertical)
@@ -124,7 +149,60 @@ struct ShoppingListView: View {
                 }
             }
             .sheet(isPresented: $showAddSheet) {
-                AddShoppingItemSheet()
+                AddShoppingItemSheet(onAdd: { name, amount, category in
+                    await addItemAsync(name: name, amount: amount, category: category)
+                })
+            }
+            .task { await loadItemsAsync() }
+            .refreshable { await loadItemsAsync() }
+            .alert("Ошибка", isPresented: $showError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage ?? "Неизвестная ошибка")
+            }
+            .overlay {
+                if let msg = transferMessage {
+                    transferToast(msg)
+                }
+            }
+        }
+    }
+
+    // MARK: - Loading View
+    private var loadingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("Загрузка списка...")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 80)
+    }
+
+    // MARK: - Transfer Toast
+    private func transferToast(_ msg: String) -> some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 10) {
+                Image(systemName: "refrigerator.fill")
+                    .foregroundStyle(.white)
+                Text(msg)
+                    .font(.subheadline).fontWeight(.medium)
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Color.blue.gradient)
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+            .padding(.bottom, 30)
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                withAnimation { transferMessage = nil }
             }
         }
     }
@@ -195,13 +273,13 @@ struct ShoppingListView: View {
         .padding(.horizontal)
     }
 
-    // MARK: - Need to Buy
+    // MARK: - Need to Buy Section
     private var needToBuySection: some View {
         VStack(spacing: 12) {
             if needToBuy.isEmpty {
                 emptySection(icon: "cart", text: "Список пуст", sub: "Добавьте продукты вручную или из рецептов")
             } else {
-                let grouped = Dictionary(grouping: needToBuy, by: { $0.category })
+                let grouped = Dictionary(grouping: needToBuy, by: { $0.shoppingCategory })
                 let sortedKeys = grouped.keys.sorted { $0.sortOrder < $1.sortOrder }
 
                 ForEach(sortedKeys, id: \.self) { cat in
@@ -211,14 +289,13 @@ struct ShoppingListView: View {
         }
     }
 
-    // MARK: - From Recipes
+    // MARK: - From Recipes Section
     private var fromRecipesSection: some View {
         VStack(spacing: 12) {
             if fromRecipes.isEmpty {
                 emptySection(icon: "book.closed", text: "Нет ингредиентов из рецептов", sub: "Добавьте рецепт — недостающие продукты появятся здесь")
             } else {
-                // Group by recipe
-                let byRecipe = Dictionary(grouping: fromRecipes, by: { $0.fromRecipe ?? "" })
+                let byRecipe = Dictionary(grouping: fromRecipes, by: { $0.from_recipe ?? "" })
                 ForEach(Array(byRecipe.keys.sorted()), id: \.self) { recipeName in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
@@ -234,7 +311,7 @@ struct ShoppingListView: View {
 
                         VStack(spacing: 6) {
                             ForEach(byRecipe[recipeName] ?? []) { item in
-                                ShoppingItemRow(item: item, onToggle: { toggleItem(item) })
+                                ShoppingItemRow(item: item, onToggle: { await toggleItemAsync(item) })
                             }
                         }
                         .padding(.horizontal)
@@ -244,19 +321,24 @@ struct ShoppingListView: View {
         }
     }
 
-    // MARK: - Bought
+    // MARK: - Bought Section
     private var boughtSection: some View {
         VStack(spacing: 12) {
             if bought.isEmpty {
                 emptySection(icon: "checkmark.circle", text: "Ничего не куплено", sub: "Отмечайте продукты в магазине")
             } else {
-                // Move to Fridge Button
+                // Transfer to Fridge Button
                 Button {
-                    // move all to fridge
+                    Task { await transferToFridgeAsync() }
                 } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: "refrigerator.fill")
-                            .font(.body)
+                        if isTransferring {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "refrigerator.fill")
+                                .font(.body)
+                        }
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Всё в холодильник")
                                 .font(.subheadline).fontWeight(.semibold)
@@ -277,11 +359,30 @@ struct ShoppingListView: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
+                .disabled(isTransferring)
+                .padding(.horizontal)
+
+                // Clear checked button
+                Button {
+                    Task { await clearCheckedAsync() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "trash")
+                            .font(.caption)
+                        Text("Очистить купленные")
+                            .font(.caption)
+                    }
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.red.opacity(0.08))
+                    .clipShape(Capsule())
+                }
                 .padding(.horizontal)
 
                 VStack(spacing: 6) {
                     ForEach(bought) { item in
-                        ShoppingItemRow(item: item, onToggle: { toggleItem(item) })
+                        ShoppingItemRow(item: item, onToggle: { await toggleItemAsync(item) })
                     }
                 }
                 .padding(.horizontal)
@@ -290,7 +391,7 @@ struct ShoppingListView: View {
     }
 
     // MARK: - Category Section
-    private func shoppingCategorySection(category: ShoppingCategory, items: [ShoppingItem]) -> some View {
+    private func shoppingCategorySection(category: ShoppingCategory, items: [ShoppingItemResponse]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: category.icon)
@@ -306,7 +407,7 @@ struct ShoppingListView: View {
 
             VStack(spacing: 6) {
                 ForEach(items) { item in
-                    ShoppingItemRow(item: item, onToggle: { toggleItem(item) })
+                    ShoppingItemRow(item: item, onToggle: { await toggleItemAsync(item) })
                 }
             }
             .padding(.horizontal)
@@ -325,10 +426,87 @@ struct ShoppingListView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Toggle
-    private func toggleItem(_ item: ShoppingItem) {
-        if let idx = items.firstIndex(where: { $0.id == item.id }) {
-            items[idx].isChecked.toggle()
+    // MARK: - API Methods
+    private func loadItemsAsync() async {
+        do {
+            let fetched = try await NetworkManager.shared.getShoppingItems()
+            withAnimation { items = fetched; isLoading = false }
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+            isLoading = false
+        }
+    }
+
+    private func toggleItemAsync(_ item: ShoppingItemResponse) async {
+        do {
+            let result = try await NetworkManager.shared.toggleShoppingItem(id: item.id)
+            if let idx = items.firstIndex(where: { $0.id == item.id }) {
+                // Re-create the item with updated check state
+                let old = items[idx]
+                let updated = ShoppingItemResponse(
+                    id: old.id, name: old.name, amount: old.amount,
+                    category: old.category, is_checked: result.is_checked,
+                    from_recipe: old.from_recipe, created_at: old.created_at
+                )
+                withAnimation { items[idx] = updated }
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func addItemAsync(name: String, amount: String, category: ShoppingCategory) async {
+        let create = ShoppingItemCreate(
+            name: name,
+            amount: amount.isEmpty ? nil : amount,
+            category: category.apiValue,
+            from_recipe: nil
+        )
+        do {
+            let newItem = try await NetworkManager.shared.addShoppingItem(create)
+            withAnimation { items.append(newItem) }
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func deleteItemAsync(_ item: ShoppingItemResponse) async {
+        do {
+            try await NetworkManager.shared.deleteShoppingItem(id: item.id)
+            withAnimation { items.removeAll { $0.id == item.id } }
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+    }
+
+    private func transferToFridgeAsync() async {
+        isTransferring = true
+        do {
+            let result = try await NetworkManager.shared.transferToFridge()
+            // Remove checked items from local list
+            withAnimation {
+                items.removeAll { $0.is_checked }
+                transferMessage = "Перенесено \(result.transferred) продуктов в холодильник"
+                isTransferring = false
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+            isTransferring = false
+        }
+    }
+
+    private func clearCheckedAsync() async {
+        do {
+            _ = try await NetworkManager.shared.clearCheckedItems()
+            withAnimation { items.removeAll { $0.is_checked } }
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
         }
     }
 }
@@ -363,26 +541,42 @@ struct SectionTab: View {
 
 // MARK: - Shopping Item Row
 struct ShoppingItemRow: View {
-    let item: ShoppingItem
-    let onToggle: () -> Void
+    let item: ShoppingItemResponse
+    let onToggle: () async -> Void
+    @State private var isToggling = false
 
     var body: some View {
-        Button(action: onToggle) {
+        Button {
+            guard !isToggling else { return }
+            isToggling = true
+            Task {
+                await onToggle()
+                isToggling = false
+            }
+        } label: {
             HStack(spacing: 14) {
                 // Checkbox
-                Image(systemName: item.isChecked ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(item.isChecked ? .green : Color(.systemGray3))
-                    .animation(.spring(response: 0.3), value: item.isChecked)
+                ZStack {
+                    if isToggling {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 24, height: 24)
+                    } else {
+                        Image(systemName: item.is_checked ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(item.is_checked ? .green : Color(.systemGray3))
+                            .animation(.spring(response: 0.3), value: item.is_checked)
+                    }
+                }
 
                 // Info
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.name)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                        .strikethrough(item.isChecked, color: .secondary)
-                        .foregroundStyle(item.isChecked ? .secondary : .primary)
-                    if let recipe = item.fromRecipe {
+                        .strikethrough(item.is_checked, color: .secondary)
+                        .foregroundStyle(item.is_checked ? .secondary : .primary)
+                    if let recipe = item.from_recipe {
                         HStack(spacing: 4) {
                             Image(systemName: "book.fill").font(.system(size: 8))
                             Text(recipe).font(.caption2)
@@ -393,14 +587,16 @@ struct ShoppingItemRow: View {
 
                 Spacer()
 
-                Text(item.amount)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color(.systemGray6))
-                    .clipShape(Capsule())
+                if let amount = item.amount, !amount.isEmpty {
+                    Text(amount)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(.systemGray6))
+                        .clipShape(Capsule())
+                }
             }
             .padding(14)
             .background(
@@ -408,9 +604,20 @@ struct ShoppingItemRow: View {
                     .fill(Color(.systemBackground))
                     .shadow(color: .black.opacity(0.03), radius: 4, y: 2)
             )
-            .opacity(item.isChecked ? 0.7 : 1.0)
+            .opacity(item.is_checked ? 0.7 : 1.0)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) {
+                Task {
+                    do {
+                        try await NetworkManager.shared.deleteShoppingItem(id: item.id)
+                    } catch { }
+                }
+            } label: {
+                Label("Удалить", systemImage: "trash")
+            }
+        }
     }
 }
 
@@ -420,6 +627,9 @@ struct AddShoppingItemSheet: View {
     @State private var name = ""
     @State private var amount = ""
     @State private var selectedCategory: ShoppingCategory = .other
+    @State private var isSaving = false
+
+    var onAdd: (String, String, ShoppingCategory) async -> Void
 
     var body: some View {
         NavigationStack {
@@ -471,17 +681,28 @@ struct AddShoppingItemSheet: View {
                     }
 
                     Button {
-                        dismiss()
+                        guard !name.isEmpty, !isSaving else { return }
+                        isSaving = true
+                        Task {
+                            await onAdd(name, amount, selectedCategory)
+                            isSaving = false
+                            dismiss()
+                        }
                     } label: {
-                        Text("Добавить")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(name.isEmpty ? Color(.systemGray4) : Color.blue)
-                            .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        HStack {
+                            if isSaving {
+                                ProgressView().tint(.white)
+                            }
+                            Text(isSaving ? "Сохранение..." : "Добавить")
+                                .font(.headline)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(name.isEmpty ? Color(.systemGray4) : Color.blue)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
-                    .disabled(name.isEmpty)
+                    .disabled(name.isEmpty || isSaving)
                 }
                 .padding()
             }
@@ -494,30 +715,5 @@ struct AddShoppingItemSheet: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - Mock Data
-extension ShoppingItem {
-    static var mockData: [ShoppingItem] {
-        [
-            // Manual items
-            ShoppingItem(name: "Хлеб цельнозерновой", amount: "1 шт", category: .grains, isChecked: false, fromRecipe: nil),
-            ShoppingItem(name: "Авокадо", amount: "2 шт", category: .vegetables, isChecked: false, fromRecipe: nil),
-            ShoppingItem(name: "Творог 5%", amount: "400г", category: .dairy, isChecked: false, fromRecipe: nil),
-            ShoppingItem(name: "Лосось филе", amount: "300г", category: .meat, isChecked: false, fromRecipe: nil),
-            ShoppingItem(name: "Лимон", amount: "2 шт", category: .vegetables, isChecked: false, fromRecipe: nil),
-
-            // From recipes
-            ShoppingItem(name: "Спагетти", amount: "200г", category: .grains, isChecked: false, fromRecipe: "Паста Карбонара"),
-            ShoppingItem(name: "Бекон", amount: "150г", category: .meat, isChecked: false, fromRecipe: "Паста Карбонара"),
-            ShoppingItem(name: "Пармезан", amount: "80г", category: .dairy, isChecked: false, fromRecipe: "Паста Карбонара"),
-            ShoppingItem(name: "Фета", amount: "100г", category: .dairy, isChecked: false, fromRecipe: "Греческий салат"),
-            ShoppingItem(name: "Оливки", amount: "50г", category: .other, isChecked: false, fromRecipe: "Греческий салат"),
-
-            // Already bought
-            ShoppingItem(name: "Яблоки", amount: "1кг", category: .vegetables, isChecked: true, fromRecipe: nil),
-            ShoppingItem(name: "Кефир", amount: "1л", category: .dairy, isChecked: true, fromRecipe: nil),
-        ]
     }
 }

@@ -196,6 +196,161 @@ struct DinnerIdeasResponse: Codable {
 }
 
 
+// MARK: - Fridge Models
+struct FridgeItemResponse: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let quantity: String
+    let category: String
+    let emoji: String?
+    let barcode: String?
+    let expiry_date: String?
+    let created_at: String?
+}
+
+struct FridgeItemCreate: Codable {
+    let name: String
+    let quantity: String
+    let category: String
+    let emoji: String?
+    let barcode: String?
+    let expiry_date: String?
+}
+
+struct FridgeItemUpdate: Codable {
+    var name: String?
+    var quantity: String?
+    var category: String?
+    var emoji: String?
+    var expiry_date: String?
+}
+
+struct FridgeStatsResponse: Codable {
+    let total_items: Int
+    let expiring_soon: Int
+    let expired: Int
+    let categories: [String: Int]
+}
+
+
+// MARK: - Recipe Models
+struct RecipeResponse: Codable, Identifiable {
+    let id: Int?
+    let name: String
+    let description: String?
+    let ingredients: [RecipeIngredientResponse]?
+    let calories: Int?
+    let proteins: Double?
+    let fats: Double?
+    let carbs: Double?
+    let cook_time: Int?
+    let category: String?
+    let cuisine: String?
+    let image_url: String?
+    let is_saved: Bool?
+    let source: String?
+    let created_at: String?
+}
+
+struct RecipeIngredientResponse: Codable {
+    let name: String
+    let amount: String?
+    let in_fridge: Bool?
+}
+
+struct RecipeFromFridgeResponse: Codable {
+    let recipes: [RecipeResponse]
+    let fridge_items_count: Int?
+    let message: String?
+}
+
+struct RecipeExploreResponse: Codable {
+    let recipes: [RecipeResponse]
+    let message: String?
+}
+
+struct RecipeCreate: Codable {
+    let name: String
+    let description: String?
+    let ingredients: [[String: AnyEncodable]]?
+    let calories: Int
+    let proteins: Double
+    let fats: Double
+    let carbs: Double
+    let cook_time: Int
+    let category: String?
+    let cuisine: String?
+    let image_url: String?
+    let source: String?
+}
+
+struct CookRecipeResponse: Codable {
+    let message: String
+    let calories_added: Int?
+    let ingredients_deducted: [String]?
+}
+
+struct AddMissingResponse: Codable {
+    let message: String
+    let added: Int
+}
+
+
+// MARK: - Shopping Models
+struct ShoppingItemResponse: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let amount: String?
+    let category: String?
+    let is_checked: Bool
+    let from_recipe: String?
+    let created_at: String?
+}
+
+struct ShoppingItemCreate: Codable {
+    let name: String
+    let amount: String?
+    let category: String?
+    let from_recipe: String?
+}
+
+struct ShoppingToggleResponse: Codable {
+    let id: Int
+    let is_checked: Bool
+}
+
+struct ShoppingProgressResponse: Codable {
+    let total: Int
+    let checked: Int
+    let unchecked: Int
+    let from_recipes: Int
+}
+
+struct TransferToFridgeResponse: Codable {
+    let message: String
+    let transferred: Int
+}
+
+struct ClearCheckedResponse: Codable {
+    let message: String
+    let count: Int
+}
+
+
+// MARK: - AnyEncodable helper
+struct AnyEncodable: Encodable {
+    private let _encode: (Encoder) throws -> Void
+
+    init<T: Encodable>(_ wrapped: T) {
+        _encode = wrapped.encode
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try _encode(encoder)
+    }
+}
+
+
 // MARK: - Auth Storage (Keychain)
 class AuthStorage {
     static let shared = AuthStorage()
@@ -534,6 +689,111 @@ class NetworkManager {
         request.httpBody = body
         let (data, _) = try await URLSession.shared.data(for: request)
         return try JSONDecoder().decode(ScanResult.self, from: data)
+    }
+    
+    // MARK: - Fridge
+    func getFridgeItems(category: String? = nil) async throws -> [FridgeItemResponse] {
+        var path = "/fridge/items"
+        if let cat = category {
+            path += "?category=\(cat)"
+        }
+        return try await request(path)
+    }
+    
+    func addFridgeItem(_ item: FridgeItemCreate) async throws -> FridgeItemResponse {
+        return try await request("/fridge/items", method: "POST", body: item)
+    }
+    
+    func addFridgeItemsBulk(_ items: [FridgeItemCreate]) async throws -> [FridgeItemResponse] {
+        return try await request("/fridge/items/bulk", method: "POST", body: items)
+    }
+    
+    func updateFridgeItem(id: Int, update: FridgeItemUpdate) async throws -> FridgeItemResponse {
+        return try await request("/fridge/items/\(id)", method: "PATCH", body: update)
+    }
+    
+    func deleteFridgeItem(id: Int) async throws {
+        let _: [String: String] = try await request("/fridge/items/\(id)", method: "DELETE")
+    }
+    
+    func getFridgeStats() async throws -> FridgeStatsResponse {
+        return try await request("/fridge/stats")
+    }
+    
+    func getExpiringItems(days: Int = 3) async throws -> [FridgeItemResponse] {
+        return try await request("/fridge/expiring?days=\(days)")
+    }
+    
+    // MARK: - Recipes
+    func getRecipesFromFridge() async throws -> RecipeFromFridgeResponse {
+        return try await request("/recipes/from-fridge")
+    }
+    
+    func exploreRecipes(category: String? = nil, cuisine: String? = nil, query: String? = nil) async throws -> RecipeExploreResponse {
+        var params: [String] = []
+        if let cat = category { params.append("category=\(cat)") }
+        if let cuis = cuisine { params.append("cuisine=\(cuis)") }
+        if let q = query?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) { params.append("query=\(q)") }
+        let queryStr = params.isEmpty ? "" : "?" + params.joined(separator: "&")
+        return try await request("/recipes/explore\(queryStr)")
+    }
+    
+    func getSavedRecipes() async throws -> [RecipeResponse] {
+        return try await request("/recipes/saved")
+    }
+    
+    func saveRecipe(_ recipe: RecipeCreate) async throws -> RecipeResponse {
+        return try await request("/recipes/save", method: "POST", body: recipe)
+    }
+    
+    func unsaveRecipe(id: Int) async throws {
+        let _: [String: String] = try await request("/recipes/saved/\(id)", method: "DELETE")
+    }
+    
+    func cookRecipe(id: Int) async throws -> CookRecipeResponse {
+        return try await request("/recipes/cook/\(id)", method: "POST")
+    }
+    
+    func addMissingToShopping(recipeId: Int) async throws -> AddMissingResponse {
+        struct Body: Codable { let recipe_id: Int }
+        return try await request("/recipes/add-missing-to-shopping", method: "POST", body: Body(recipe_id: recipeId))
+    }
+    
+    // MARK: - Shopping
+    func getShoppingItems(checked: Bool? = nil) async throws -> [ShoppingItemResponse] {
+        var path = "/shopping/items"
+        if let checked = checked {
+            path += "?checked=\(checked)"
+        }
+        return try await request(path)
+    }
+    
+    func addShoppingItem(_ item: ShoppingItemCreate) async throws -> ShoppingItemResponse {
+        return try await request("/shopping/items", method: "POST", body: item)
+    }
+    
+    func addShoppingItemsBulk(_ items: [ShoppingItemCreate]) async throws -> [ShoppingItemResponse] {
+        return try await request("/shopping/items/bulk", method: "POST", body: items)
+    }
+    
+    func toggleShoppingItem(id: Int) async throws -> ShoppingToggleResponse {
+        return try await request("/shopping/items/\(id)/toggle", method: "PATCH")
+    }
+    
+    func deleteShoppingItem(id: Int) async throws {
+        let _: [String: String] = try await request("/shopping/items/\(id)", method: "DELETE")
+    }
+    
+    func clearCheckedItems() async throws -> ClearCheckedResponse {
+        return try await request("/shopping/items/checked/clear", method: "DELETE")
+    }
+    
+    func transferToFridge() async throws -> TransferToFridgeResponse {
+        return try await request("/shopping/transfer-to-fridge", method: "POST")
+    }
+    
+    func getShoppingProgress() async throws -> ShoppingProgressResponse {
+        return try await request("/shopping/progress")
     }
     
 }
