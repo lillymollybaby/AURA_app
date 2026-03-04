@@ -67,20 +67,16 @@ enum AnyCodableValue: Codable {
 struct DailySummaryResponse: Codable {
     let date: String?
     let total_calories: Double
-    let total_proteins: Double
-    let total_fats: Double
+    let total_protein: Double
+    let total_fat: Double
     let total_carbs: Double
     let meals: [MealResponse]?
     let ai_advice: String?
-    let calorie_goal: Int?      // реальная цель с сервера (может отсутствовать)
+    let calorie_goal: Int?
     let protein_goal: Int?
     let fat_goal: Int?
     let carbs_goal: Int?
 
-    // Обратная совместимость
-    var total_protein: Double { total_proteins }
-    var total_fat: Double { total_fats }
-    var total_carbs_compat: Double { total_carbs }
     var meals_count: Int { meals?.count ?? 0 }
 }
 
@@ -98,6 +94,89 @@ struct MealResponse: Codable, Identifiable {
     var protein: Double { proteins }
     var fat: Double { fats }
     var created_at: String? { eaten_at }
+}
+
+// MARK: - Fridge Models
+struct FridgeItemResponse: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let quantity: String
+    let category: String
+    let emoji: String?
+    let barcode: String?
+    let expiry_date: String?
+    let created_at: String
+}
+
+struct FridgeItemCreate: Codable {
+    let name: String
+    let quantity: String
+    let category: String?
+    let emoji: String?
+    let barcode: String?
+    let expiry_date: String?
+}
+
+// MARK: - Shopping Models
+struct ShoppingItemResponse: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let amount: String?
+    let category: String?
+    let is_checked: Bool
+    let from_recipe: String?
+    let created_at: String
+}
+
+struct ShoppingItemCreate: Codable {
+    let name: String
+    let amount: String?
+    let category: String?
+    let from_recipe: String?
+}
+
+struct TransferResponse: Codable {
+    let message: String
+    let transferred: Int
+}
+
+// MARK: - Recipe Models
+struct FridgeRecipesResponse: Codable {
+    let recipes: [RecipeResponse]
+    let fridge_items_count: Int?
+    let message: String?
+}
+
+struct RecipeResponse: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let description: String?
+    let ingredients: [[String: AnyCodableValue]]?
+    let calories: Int
+    let proteins: Double
+    let fats: Double
+    let carbs: Double
+    let cook_time: Int
+    let category: String?
+    let cuisine: String?
+    let image_url: String?
+    let is_saved: Bool
+    let source: String?
+    let created_at: String?
+}
+
+struct RecipeCreate: Codable {
+    let name: String
+    let description: String?
+    let ingredients: [[String: AnyCodableValue]]?
+    let calories: Int
+    let proteins: Double
+    let fats: Double
+    let carbs: Double
+    let cook_time: Int
+    let category: String?
+    let cuisine: String?
+    let image_url: String?
 }
 
 struct MovieResponse: Codable, Identifiable {
@@ -654,6 +733,78 @@ class NetworkManager {
             throw APIError.serverError(errStr)
         }
         return result
+    }
+    
+    // MARK: - Fridge
+    func getFridgeItems() async throws -> [FridgeItemResponse] {
+        return try await request("/fridge/items")
+    }
+    
+    func addFridgeItem(_ item: FridgeItemCreate) async throws -> FridgeItemResponse {
+        return try await request("/fridge/items", method: "POST", body: item)
+    }
+    
+    func deleteFridgeItem(id: Int) async throws {
+        let _: MessageResponse = try await request("/fridge/items/\(id)", method: "DELETE")
+    }
+    
+    // MARK: - Shopping
+    func getShoppingItems() async throws -> [ShoppingItemResponse] {
+        return try await request("/shopping/items")
+    }
+    
+    func addShoppingItem(_ item: ShoppingItemCreate) async throws -> ShoppingItemResponse {
+        return try await request("/shopping/items", method: "POST", body: item)
+    }
+    
+    func toggleShoppingItem(id: Int) async throws -> ShoppingItemResponse {
+        return try await request("/shopping/items/\(id)/toggle", method: "PATCH")
+    }
+    
+    func deleteShoppingItem(id: Int) async throws {
+        let _: MessageResponse = try await request("/shopping/items/\(id)", method: "DELETE")
+    }
+    
+    func clearCheckedItems() async throws -> MessageResponse {
+        return try await request("/shopping/items/checked/clear", method: "DELETE")
+    }
+    
+    func transferToFridge() async throws -> TransferResponse {
+        return try await request("/shopping/transfer-to-fridge", method: "POST")
+    }
+    
+    // MARK: - Recipes
+    func getRecipesFromFridge() async throws -> FridgeRecipesResponse {
+        return try await request("/recipes/from-fridge")
+    }
+    
+    func exploreRecipes(cuisine: String? = nil, category: String? = nil, query: String? = nil) async throws -> FridgeRecipesResponse {
+        var path = "/recipes/explore?"
+        if let c = cuisine { path += "cuisine=\(c)&" }
+        if let cat = category { path += "category=\(cat)&" }
+        if let q = query { path += "query=\(q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q)&" }
+        return try await request(path)
+    }
+    
+    func getSavedRecipes() async throws -> [RecipeResponse] {
+        return try await request("/recipes/saved")
+    }
+    
+    func saveRecipe(_ recipe: RecipeCreate) async throws -> RecipeResponse {
+        return try await request("/recipes/save", method: "POST", body: recipe)
+    }
+    
+    func unsaveRecipe(id: Int) async throws {
+        let _: MessageResponse = try await request("/recipes/saved/\(id)", method: "DELETE")
+    }
+    
+    func cookRecipe(id: Int) async throws -> MessageResponse {
+        return try await request("/recipes/cook/\(id)", method: "POST")
+    }
+    
+    func addMissingToShopping(recipeId: Int) async throws -> MessageResponse {
+        struct Req: Codable { let recipe_id: Int }
+        return try await request("/recipes/add-missing-to-shopping", method: "POST", body: Req(recipe_id: recipeId))
     }
     
 }
