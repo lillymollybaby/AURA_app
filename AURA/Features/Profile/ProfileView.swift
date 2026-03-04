@@ -5,26 +5,29 @@ import Combine
 class ProfileSettings: ObservableObject {
     static let shared = ProfileSettings()
 
-    @Published var city: String            { didSet { save("city", city) } }
-    @Published var learningLanguage: String { didSet { save("learning_language", learningLanguage) } }
-    @Published var letterboxdUsername: String { didSet { save("letterboxd_username", letterboxdUsername) } }
-    @Published var calorieGoal: Int        { didSet { UserDefaults.standard.set(calorieGoal, forKey: "calorie_goal_local") } }
-    @Published var darkMode: String        { didSet { save("dark_mode", darkMode) } }
-    @Published var gatheringTime: Int      { didSet { UserDefaults.standard.set(gatheringTime, forKey: "gathering_time") } }
-    @Published var wordsDailyGoal: Int     { didSet { UserDefaults.standard.set(wordsDailyGoal, forKey: "words_daily_goal") } }
-    @Published var hapticEnabled: Bool     { didSet { UserDefaults.standard.set(hapticEnabled, forKey: "haptic_on") } }
-    @Published var aiPersonality: String   { didSet { save("ai_personality", aiPersonality) } }
-    @Published var units: String           { didSet { save("units", units) } }
-    @Published var weekStart: String       { didSet { save("week_start", weekStart) } }
+    @Published var city: String            { didSet { save("city", city); syncToServer() } }
+    @Published var learningLanguage: String { didSet { save("learning_language", learningLanguage); syncToServer() } }
+    @Published var letterboxdUsername: String { didSet { save("letterboxd_username", letterboxdUsername); syncToServer() } }
+    @Published var calorieGoal: Int        { didSet { UserDefaults.standard.set(calorieGoal, forKey: "calorie_goal_local"); syncToServer() } }
+    @Published var darkMode: String        { didSet { save("dark_mode", darkMode); syncToServer() } }
+    @Published var gatheringTime: Int      { didSet { UserDefaults.standard.set(gatheringTime, forKey: "gathering_time"); syncToServer() } }
+    @Published var wordsDailyGoal: Int     { didSet { UserDefaults.standard.set(wordsDailyGoal, forKey: "words_daily_goal"); syncToServer() } }
+    @Published var hapticEnabled: Bool     { didSet { UserDefaults.standard.set(hapticEnabled, forKey: "haptic_on"); syncToServer() } }
+    @Published var aiPersonality: String   { didSet { save("ai_personality", aiPersonality); syncToServer() } }
+    @Published var units: String           { didSet { save("units", units); syncToServer() } }
+    @Published var weekStart: String       { didSet { save("week_start", weekStart); syncToServer() } }
 
     // Notification toggles — per category
-    @Published var notifWatchedEnabled: Bool     { didSet { UserDefaults.standard.set(notifWatchedEnabled, forKey: "notif_watched") } }
-    @Published var notifWatchlistEnabled: Bool   { didSet { UserDefaults.standard.set(notifWatchlistEnabled, forKey: "notif_watchlist") } }
-    @Published var notifLessonEnabled: Bool      { didSet { UserDefaults.standard.set(notifLessonEnabled, forKey: "notif_lesson") } }
-    @Published var notifFoodEnabled: Bool        { didSet { UserDefaults.standard.set(notifFoodEnabled, forKey: "notif_food") } }
-    @Published var notifRouteEnabled: Bool       { didSet { UserDefaults.standard.set(notifRouteEnabled, forKey: "notif_route") } }
-    @Published var notifQuizEnabled: Bool        { didSet { UserDefaults.standard.set(notifQuizEnabled, forKey: "notif_quiz") } }
-    @Published var notifStreakEnabled: Bool       { didSet { UserDefaults.standard.set(notifStreakEnabled, forKey: "notif_streak") } }
+    @Published var notifWatchedEnabled: Bool     { didSet { UserDefaults.standard.set(notifWatchedEnabled, forKey: "notif_watched"); syncToServer() } }
+    @Published var notifWatchlistEnabled: Bool   { didSet { UserDefaults.standard.set(notifWatchlistEnabled, forKey: "notif_watchlist"); syncToServer() } }
+    @Published var notifLessonEnabled: Bool      { didSet { UserDefaults.standard.set(notifLessonEnabled, forKey: "notif_lesson"); syncToServer() } }
+    @Published var notifFoodEnabled: Bool        { didSet { UserDefaults.standard.set(notifFoodEnabled, forKey: "notif_food"); syncToServer() } }
+    @Published var notifRouteEnabled: Bool       { didSet { UserDefaults.standard.set(notifRouteEnabled, forKey: "notif_route"); syncToServer() } }
+    @Published var notifQuizEnabled: Bool        { didSet { UserDefaults.standard.set(notifQuizEnabled, forKey: "notif_quiz"); syncToServer() } }
+    @Published var notifStreakEnabled: Bool       { didSet { UserDefaults.standard.set(notifStreakEnabled, forKey: "notif_streak"); syncToServer() } }
+
+    private var isSyncing = false
+    private var syncDebounceTask: Task<Void, Never>?
 
     private func save(_ key: String, _ value: String) { UserDefaults.standard.set(value, forKey: key) }
 
@@ -52,6 +55,79 @@ class ProfileSettings: ObservableObject {
         notifQuizEnabled      = UserDefaults.standard.object(forKey: "notif_quiz") as? Bool ?? true
         notifStreakEnabled    = UserDefaults.standard.object(forKey: "notif_streak") as? Bool ?? true
     }
+
+    /// Convert all settings to a dictionary for server sync
+    func toDictionary() -> [String: Any] {
+        return [
+            "city": city,
+            "learning_language": learningLanguage,
+            "letterboxd_username": letterboxdUsername,
+            "calorie_goal": calorieGoal,
+            "dark_mode": darkMode,
+            "gathering_time": gatheringTime,
+            "words_daily_goal": wordsDailyGoal,
+            "haptic_enabled": hapticEnabled,
+            "ai_personality": aiPersonality,
+            "units": units,
+            "week_start": weekStart,
+            "notif_watched": notifWatchedEnabled,
+            "notif_watchlist": notifWatchlistEnabled,
+            "notif_lesson": notifLessonEnabled,
+            "notif_food": notifFoodEnabled,
+            "notif_route": notifRouteEnabled,
+            "notif_quiz": notifQuizEnabled,
+            "notif_streak": notifStreakEnabled,
+        ]
+    }
+
+    /// Apply preferences from server response
+    func applyFromServer(_ prefs: [String: AnyCodableValue]) {
+        isSyncing = true
+        defer { isSyncing = false }
+
+        if let v = prefs["city"]?.stringValue { city = v; save("city", v) }
+        if let v = prefs["learning_language"]?.stringValue { learningLanguage = v; save("learning_language", v) }
+        if let v = prefs["letterboxd_username"]?.stringValue { letterboxdUsername = v; save("letterboxd_username", v) }
+        if let v = prefs["calorie_goal"]?.intValue { calorieGoal = v; UserDefaults.standard.set(v, forKey: "calorie_goal_local") }
+        if let v = prefs["dark_mode"]?.stringValue { darkMode = v; save("dark_mode", v) }
+        if let v = prefs["gathering_time"]?.intValue { gatheringTime = v; UserDefaults.standard.set(v, forKey: "gathering_time") }
+        if let v = prefs["words_daily_goal"]?.intValue { wordsDailyGoal = v; UserDefaults.standard.set(v, forKey: "words_daily_goal") }
+        if let v = prefs["haptic_enabled"]?.boolValue { hapticEnabled = v; UserDefaults.standard.set(v, forKey: "haptic_on") }
+        if let v = prefs["ai_personality"]?.stringValue { aiPersonality = v; save("ai_personality", v) }
+        if let v = prefs["units"]?.stringValue { units = v; save("units", v) }
+        if let v = prefs["week_start"]?.stringValue { weekStart = v; save("week_start", v) }
+        if let v = prefs["notif_watched"]?.boolValue { notifWatchedEnabled = v; UserDefaults.standard.set(v, forKey: "notif_watched") }
+        if let v = prefs["notif_watchlist"]?.boolValue { notifWatchlistEnabled = v; UserDefaults.standard.set(v, forKey: "notif_watchlist") }
+        if let v = prefs["notif_lesson"]?.boolValue { notifLessonEnabled = v; UserDefaults.standard.set(v, forKey: "notif_lesson") }
+        if let v = prefs["notif_food"]?.boolValue { notifFoodEnabled = v; UserDefaults.standard.set(v, forKey: "notif_food") }
+        if let v = prefs["notif_route"]?.boolValue { notifRouteEnabled = v; UserDefaults.standard.set(v, forKey: "notif_route") }
+        if let v = prefs["notif_quiz"]?.boolValue { notifQuizEnabled = v; UserDefaults.standard.set(v, forKey: "notif_quiz") }
+        if let v = prefs["notif_streak"]?.boolValue { notifStreakEnabled = v; UserDefaults.standard.set(v, forKey: "notif_streak") }
+    }
+
+    /// Debounced sync to server (wait 1s after last change)
+    func syncToServer() {
+        guard !isSyncing else { return }
+        guard AuthStorage.shared.isLoggedIn else { return }
+
+        syncDebounceTask?.cancel()
+        syncDebounceTask = Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second debounce
+            guard !Task.isCancelled else { return }
+            let prefs = await MainActor.run { self.toDictionary() }
+            let _ = try? await NetworkManager.shared.savePreferences(prefs)
+        }
+    }
+
+    /// Load preferences from server (call on app launch / login)
+    func loadFromServer() {
+        Task {
+            guard let response = try? await NetworkManager.shared.getPreferences() else { return }
+            await MainActor.run {
+                self.applyFromServer(response.preferences)
+            }
+        }
+    }
 }
 
 // MARK: - ProfileView
@@ -62,6 +138,8 @@ struct ProfileView: View {
     @State private var myMovies: [MovieResponse] = []
     @State private var meals: [MealResponse] = []
     @State private var showLogoutAlert = false
+    @State private var showDeleteAccountAlert = false
+    @State private var showChangePassword = false
     @State private var showEditName = false
     @State private var editedName = ""
 
@@ -118,6 +196,10 @@ struct ProfileView: View {
             .navigationBarTitleDisplayMode(.large)
             .alert("Выйти из аккаунта?", isPresented: $showLogoutAlert) {
                 Button("Выйти", role: .destructive) {
+                    Task {
+                        // Server-side logout (blacklist token)
+                        let _ = try? await NetworkManager.shared.logout()
+                    }
                     AuthStorage.shared.logout()
                     NotificationCenter.default.post(name: .didLogout, object: nil)
                 }
@@ -125,7 +207,22 @@ struct ProfileView: View {
             } message: {
                 Text("Вы вернётесь на экран входа")
             }
+            .alert("Удалить аккаунт?", isPresented: $showDeleteAccountAlert) {
+                Button("Удалить навсегда", role: .destructive) {
+                    Task {
+                        let _ = try? await NetworkManager.shared.deleteAccount()
+                        await MainActor.run {
+                            AuthStorage.shared.logout()
+                            NotificationCenter.default.post(name: .didLogout, object: nil)
+                        }
+                    }
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("Все ваши данные будут удалены безвозвратно. Это действие нельзя отменить.")
+            }
             .sheet(isPresented: $showEditName) { editNameSheet }
+            .sheet(isPresented: $showChangePassword) { ChangePasswordSheet() }
             .task { await loadData() }
         }
     }
@@ -257,6 +354,11 @@ struct ProfileView: View {
     // MARK: - About Menu
     var aboutMenu: some View {
         VStack(spacing: 0) {
+            Button { showChangePassword = true } label: {
+                ProfileMenuRow(icon: "key.fill", iconColor: .blue,
+                               title: "Сменить пароль", subtitle: nil)
+            }
+            menuDivider
             NavigationLink { AboutAppPage() } label: {
                 ProfileMenuRow(icon: "info.circle.fill", iconColor: .gray,
                                title: "О приложении", subtitle: "v1.0.0")
@@ -265,6 +367,11 @@ struct ProfileView: View {
             NavigationLink { PrivacyPage() } label: {
                 ProfileMenuRow(icon: "lock.shield.fill", iconColor: .gray,
                                title: "Конфиденциальность", subtitle: nil)
+            }
+            menuDivider
+            Button { showDeleteAccountAlert = true } label: {
+                ProfileMenuRow(icon: "trash.fill", iconColor: .red,
+                               title: "Удалить аккаунт", subtitle: nil)
             }
         }
         .background(Color(.secondarySystemGroupedBackground))
@@ -335,6 +442,8 @@ struct ProfileView: View {
         if let s: StreakResponse = try? await NetworkManager.shared.request("/languages/streak") { streak = s }
         if let m = try? await NetworkManager.shared.getMyMovies() { myMovies = m }
         if let ml = try? await NetworkManager.shared.getMealHistory() { meals = ml }
+        // Sync preferences from server
+        settings.loadFromServer()
     }
 }
 
@@ -855,6 +964,98 @@ struct AboutFeatureRow: View {
     }
 }
 
+// MARK: - Change Password Sheet
+struct ChangePasswordSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var currentPassword = ""
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
+    @State private var isLoading = false
+    @State private var errorMessage = ""
+    @State private var isDone = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if !isDone {
+                    Section {
+                        SecureField("Текущий пароль", text: $currentPassword)
+                        SecureField("Новый пароль", text: $newPassword)
+                        SecureField("Подтвердите новый пароль", text: $confirmPassword)
+                    } header: {
+                        Text("Смена пароля")
+                    } footer: {
+                        Text("Минимум 6 символов")
+                    }
+
+                    if !errorMessage.isEmpty {
+                        Section {
+                            Text(errorMessage)
+                                .foregroundColor(.red)
+                                .font(.caption)
+                        }
+                    }
+
+                    Section {
+                        Button(action: { Task { await changePassword() } }) {
+                            HStack {
+                                Spacer()
+                                if isLoading {
+                                    ProgressView()
+                                } else {
+                                    Text("Сменить пароль")
+                                        .fontWeight(.semibold)
+                                }
+                                Spacer()
+                            }
+                        }
+                        .disabled(isLoading)
+                    }
+                } else {
+                    Section {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 12) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 48))
+                                    .foregroundStyle(.green)
+                                Text("Пароль изменён")
+                                    .font(.headline)
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 20)
+                    }
+                }
+            }
+            .navigationTitle("Пароль")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(isDone ? "Готово" : "Отмена") { dismiss() }
+                }
+            }
+        }
+    }
+
+    func changePassword() async {
+        guard !currentPassword.isEmpty else { errorMessage = "Введите текущий пароль"; return }
+        guard newPassword.count >= 6 else { errorMessage = "Минимум 6 символов"; return }
+        guard newPassword == confirmPassword else { errorMessage = "Пароли не совпадают"; return }
+
+        isLoading = true; errorMessage = ""
+        do {
+            let _ = try await NetworkManager.shared.changePassword(
+                currentPassword: currentPassword, newPassword: newPassword
+            )
+            withAnimation { isDone = true }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+}
+
 // MARK: - Privacy Page
 struct PrivacyPage: View {
     var body: some View {
@@ -874,7 +1075,7 @@ struct PrivacyPage: View {
                     Text("Для работы используются API: TMDB (фильмы), Google Gemini (AI), 2GIS (маршруты). Данные передаются в зашифрованном виде.")
 
                     Text("Удаление данных").font(.headline)
-                    Text("Для удаления аккаунта и всех данных напишите на aura-support@example.com.")
+                    Text("Вы можете удалить свой аккаунт и все данные в разделе Профиль → Удалить аккаунт. Удаление необратимо.")
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)

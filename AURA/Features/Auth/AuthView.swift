@@ -127,6 +127,9 @@ struct AuthView: View {
     @State private var isLoading = false
     @State private var errorMessage = ""
     @State private var showContent = false
+    @State private var showForgotPassword = false
+    @State private var showEmailVerification = false
+    @State private var pendingEmail = ""
 
     var body: some View {
         ZStack {
@@ -138,7 +141,8 @@ struct AuthView: View {
                         isLogin: $isLogin, email: $email, password: $password,
                         fullName: $fullName, isLoading: $isLoading,
                         errorMessage: $errorMessage, showContent: showContent,
-                        onSubmit: { Task { await performAuth() } }
+                        onSubmit: { Task { await performAuth() } },
+                        onForgotPassword: { showForgotPassword = true }
                     )
                     if showContent {
                         Text("Входя в аккаунт, вы соглашаетесь с условиями использования")
@@ -152,6 +156,15 @@ struct AuthView: View {
             }
         }
         .onAppear { withAnimation { showContent = true } }
+        .sheet(isPresented: $showForgotPassword) {
+            ForgotPasswordSheet()
+        }
+        .sheet(isPresented: $showEmailVerification) {
+            EmailVerificationSheet(email: pendingEmail) {
+                // Verification done — proceed to app
+                showEmailVerification = false
+            }
+        }
     }
 
     func performAuth() async {
@@ -166,6 +179,11 @@ struct AuthView: View {
                 guard !fullName.isEmpty else { errorMessage = "Введите имя"; isLoading = false; return }
                 let r = try await NetworkManager.shared.register(email: email, password: password, name: fullName)
                 AuthStorage.shared.token = r.access_token
+                // Show email verification after registration
+                if r.user.is_verified == false {
+                    pendingEmail = email
+                    showEmailVerification = true
+                }
                 NotificationCenter.default.post(name: .didLogin, object: nil)
             }
         } catch { withAnimation { errorMessage = error.localizedDescription } }
@@ -218,6 +236,7 @@ struct AuthCard: View {
     @Binding var errorMessage: String
     let showContent: Bool
     let onSubmit: () -> Void
+    let onForgotPassword: () -> Void
 
     var body: some View {
         VStack(spacing: 16) {
@@ -226,7 +245,7 @@ struct AuthCard: View {
             if !errorMessage.isEmpty { AuthError(message: errorMessage) }
             AuthButton(isLogin: isLogin, isLoading: isLoading, onTap: onSubmit)
             if isLogin {
-                Button("Забыли пароль?") {}
+                Button("Забыли пароль?") { onForgotPassword() }
                     .font(.system(size:13, weight:.light))
                     .foregroundColor(Color(red:0.5,green:0.5,blue:0.7))
             }
@@ -351,5 +370,266 @@ struct GlassField: View {
         .overlay(RoundedRectangle(cornerRadius:14)
             .stroke(focused ? Color(red:0.5,green:0.4,blue:0.9).opacity(0.4) : Color(red:0.88,green:0.88,blue:0.94), lineWidth:1)
             .animation(.easeInOut(duration:0.2), value:focused))
+    }
+}
+
+
+// MARK: - Forgot Password Sheet
+struct ForgotPasswordSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var email = ""
+    @State private var code = ""
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
+    @State private var isLoading = false
+    @State private var errorMessage = ""
+    @State private var successMessage = ""
+    @State private var step: ForgotStep = .enterEmail
+
+    enum ForgotStep { case enterEmail, enterCode, done }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Header
+                VStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(colors: [Color(red:0.93,green:0.42,blue:0.42), Color(red:0.96,green:0.3,blue:0.3)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 56, height: 56)
+                        Image(systemName: step == .done ? "checkmark" : "key.fill")
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundStyle(.white)
+                    }
+                    Text(step == .done ? "Пароль изменён" : "Сброс пароля")
+                        .font(.system(size: 22, weight: .light, design: .serif))
+                        .foregroundColor(Color(red:0.2,green:0.2,blue:0.3))
+                    Text(stepSubtitle)
+                        .font(.system(size: 13, weight: .light))
+                        .foregroundColor(Color(red:0.5,green:0.5,blue:0.6))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+                .padding(.top, 24).padding(.bottom, 32)
+
+                // Content
+                VStack(spacing: 16) {
+                    switch step {
+                    case .enterEmail:
+                        GlassField(icon: "envelope", placeholder: "Email", text: $email, keyboard: .emailAddress)
+                    case .enterCode:
+                        GlassField(icon: "number", placeholder: "Код из письма", text: $code, keyboard: .numberPad)
+                        GlassField(icon: "lock", placeholder: "Новый пароль", text: $newPassword, isSecure: true)
+                        GlassField(icon: "lock", placeholder: "Повторите пароль", text: $confirmPassword, isSecure: true)
+                    case .done:
+                        EmptyView()
+                    }
+
+                    if !errorMessage.isEmpty {
+                        AuthError(message: errorMessage)
+                    }
+                    if !successMessage.isEmpty {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle").font(.caption)
+                            Text(successMessage).font(.caption)
+                        }
+                        .foregroundColor(Color(red:0.2,green:0.7,blue:0.3))
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Color(red:0.94,green:1.0,blue:0.94)).cornerRadius(10)
+                    }
+
+                    if step != .done {
+                        Button(action: { Task { await performStep() } }) {
+                            ZStack {
+                                if isLoading { ProgressView().tint(.white) }
+                                else { Text(step == .enterEmail ? "Отправить код" : "Сбросить пароль")
+                                    .font(.system(size: 15, weight: .medium)).foregroundColor(.white) }
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 16)
+                            .background(LinearGradient(colors: [Color(red:0.5,green:0.4,blue:0.9), Color(red:0.35,green:0.5,blue:1.0)], startPoint: .leading, endPoint: .trailing))
+                            .cornerRadius(16)
+                        }
+                        .disabled(isLoading)
+                    } else {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("Вернуться ко входу")
+                                .font(.system(size: 15, weight: .medium)).foregroundColor(.white)
+                                .frame(maxWidth: .infinity).padding(.vertical, 16)
+                                .background(LinearGradient(colors: [Color(red:0.2,green:0.7,blue:0.3), Color(red:0.3,green:0.8,blue:0.4)], startPoint: .leading, endPoint: .trailing))
+                                .cornerRadius(16)
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+
+                Spacer()
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Закрыть") { dismiss() }
+                }
+            }
+        }
+    }
+
+    var stepSubtitle: String {
+        switch step {
+        case .enterEmail: return "Введите email и мы отправим код для сброса пароля"
+        case .enterCode: return "Введите код из письма и новый пароль"
+        case .done: return "Пароль успешно изменён. Войдите с новым паролем."
+        }
+    }
+
+    func performStep() async {
+        isLoading = true; errorMessage = ""; successMessage = ""
+        do {
+            switch step {
+            case .enterEmail:
+                guard !email.isEmpty else { errorMessage = "Введите email"; isLoading = false; return }
+                let _ = try await NetworkManager.shared.forgotPassword(email: email)
+                withAnimation { step = .enterCode }
+                successMessage = "Код отправлен на \(email)"
+            case .enterCode:
+                guard !code.isEmpty else { errorMessage = "Введите код"; isLoading = false; return }
+                guard newPassword.count >= 6 else { errorMessage = "Пароль минимум 6 символов"; isLoading = false; return }
+                guard newPassword == confirmPassword else { errorMessage = "Пароли не совпадают"; isLoading = false; return }
+                let _ = try await NetworkManager.shared.resetPassword(email: email, code: code, newPassword: newPassword)
+                withAnimation { step = .done }
+            case .done: break
+            }
+        } catch {
+            withAnimation { errorMessage = error.localizedDescription }
+        }
+        isLoading = false
+    }
+}
+
+
+// MARK: - Email Verification Sheet
+struct EmailVerificationSheet: View {
+    let email: String
+    let onVerified: () -> Void
+
+    @State private var code = ""
+    @State private var isLoading = false
+    @State private var errorMessage = ""
+    @State private var successMessage = ""
+    @State private var isVerified = false
+    @State private var resendCooldown = 0
+
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                VStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(colors: [Color(red:0.55,green:0.45,blue:1.0), Color(red:0.3,green:0.6,blue:1.0)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 56, height: 56)
+                        Image(systemName: isVerified ? "checkmark" : "envelope.badge.fill")
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundStyle(.white)
+                    }
+                    Text(isVerified ? "Email подтверждён!" : "Подтвердите email")
+                        .font(.system(size: 22, weight: .light, design: .serif))
+                        .foregroundColor(Color(red:0.2,green:0.2,blue:0.3))
+                    Text(isVerified ? "Вы можете продолжить использование приложения" : "Мы отправили 6-значный код на\n\(email)")
+                        .font(.system(size: 13, weight: .light))
+                        .foregroundColor(Color(red:0.5,green:0.5,blue:0.6))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+                .padding(.top, 24).padding(.bottom, 32)
+
+                VStack(spacing: 16) {
+                    if !isVerified {
+                        GlassField(icon: "number", placeholder: "Код подтверждения", text: $code, keyboard: .numberPad)
+
+                        if !errorMessage.isEmpty { AuthError(message: errorMessage) }
+                        if !successMessage.isEmpty {
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.circle").font(.caption)
+                                Text(successMessage).font(.caption)
+                            }
+                            .foregroundColor(Color(red:0.2,green:0.7,blue:0.3))
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(Color(red:0.94,green:1.0,blue:0.94)).cornerRadius(10)
+                        }
+
+                        Button(action: { Task { await verify() } }) {
+                            ZStack {
+                                if isLoading { ProgressView().tint(.white) }
+                                else { Text("Подтвердить").font(.system(size: 15, weight: .medium)).foregroundColor(.white) }
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 16)
+                            .background(LinearGradient(colors: [Color(red:0.5,green:0.4,blue:0.9), Color(red:0.35,green:0.5,blue:1.0)], startPoint: .leading, endPoint: .trailing))
+                            .cornerRadius(16)
+                        }
+                        .disabled(isLoading)
+
+                        Button(action: { Task { await resend() } }) {
+                            if resendCooldown > 0 {
+                                Text("Отправить снова (\(resendCooldown)s)")
+                                    .font(.system(size: 13, weight: .light))
+                                    .foregroundColor(Color(red:0.6,green:0.6,blue:0.7))
+                            } else {
+                                Text("Отправить код снова")
+                                    .font(.system(size: 13, weight: .light))
+                                    .foregroundColor(Color(red:0.5,green:0.5,blue:0.7))
+                            }
+                        }
+                        .disabled(resendCooldown > 0)
+                    } else {
+                        Button { onVerified() } label: {
+                            Text("Продолжить")
+                                .font(.system(size: 15, weight: .medium)).foregroundColor(.white)
+                                .frame(maxWidth: .infinity).padding(.vertical, 16)
+                                .background(LinearGradient(colors: [Color(red:0.2,green:0.7,blue:0.3), Color(red:0.3,green:0.8,blue:0.4)], startPoint: .leading, endPoint: .trailing))
+                                .cornerRadius(16)
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+
+                Spacer()
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Позже") { onVerified() }
+                }
+            }
+            .onReceive(timer) { _ in
+                if resendCooldown > 0 { resendCooldown -= 1 }
+            }
+        }
+    }
+
+    func verify() async {
+        guard code.count == 6 else { errorMessage = "Введите 6-значный код"; return }
+        isLoading = true; errorMessage = ""
+        do {
+            let _ = try await NetworkManager.shared.verifyEmail(email: email, code: code)
+            withAnimation { isVerified = true }
+        } catch {
+            withAnimation { errorMessage = error.localizedDescription }
+        }
+        isLoading = false
+    }
+
+    func resend() async {
+        do {
+            let _ = try await NetworkManager.shared.resendVerification(email: email)
+            successMessage = "Код отправлен повторно"
+            resendCooldown = 60
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }

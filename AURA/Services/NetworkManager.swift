@@ -13,8 +13,55 @@ struct UserResponse: Codable {
     let username: String?
     let full_name: String?
     let avatar_url: String?
+    let is_verified: Bool?
     let calorie_goal: Int?
+    let protein_goal: Int?
+    let carbs_goal: Int?
+    let fat_goal: Int?
+    let step_goal: Int?
     let created_at: String?
+}
+
+struct MessageResponse: Codable {
+    let message: String
+}
+
+struct PreferencesResponse: Codable {
+    let preferences: [String: AnyCodableValue]
+}
+
+/// A type-erased Codable value for preferences JSON
+enum AnyCodableValue: Codable {
+    case string(String)
+    case int(Int)
+    case double(Double)
+    case bool(Bool)
+    case null
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let v = try? container.decode(Bool.self) { self = .bool(v) }
+        else if let v = try? container.decode(Int.self) { self = .int(v) }
+        else if let v = try? container.decode(Double.self) { self = .double(v) }
+        else if let v = try? container.decode(String.self) { self = .string(v) }
+        else { self = .null }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let v): try container.encode(v)
+        case .int(let v): try container.encode(v)
+        case .double(let v): try container.encode(v)
+        case .bool(let v): try container.encode(v)
+        case .null: try container.encodeNil()
+        }
+    }
+    
+    var stringValue: String? { if case .string(let v) = self { return v }; return nil }
+    var intValue: Int? { if case .int(let v) = self { return v }; return nil }
+    var doubleValue: Double? { if case .double(let v) = self { return v }; return nil }
+    var boolValue: Bool? { if case .bool(let v) = self { return v }; return nil }
 }
 
 struct DailySummaryResponse: Codable {
@@ -25,18 +72,10 @@ struct DailySummaryResponse: Codable {
     let total_carbs: Double
     let meals: [MealResponse]?
     let ai_advice: String?
-    let calorie_goal: Int?
+    let calorie_goal: Int?      // реальная цель с сервера (может отсутствовать)
     let protein_goal: Int?
     let fat_goal: Int?
     let carbs_goal: Int?
-
-    // API возвращает singular (total_protein), а мы храним plural (total_proteins)
-    enum CodingKeys: String, CodingKey {
-        case date, total_calories, total_carbs, meals, ai_advice
-        case calorie_goal, protein_goal, fat_goal, carbs_goal
-        case total_proteins = "total_protein"
-        case total_fats = "total_fat"
-    }
 
     // Обратная совместимость
     var total_protein: Double { total_proteins }
@@ -193,161 +232,6 @@ struct TrafficAdviceResponse: Codable {
 struct DinnerIdeasResponse: Codable {
     let ideas: String
     let calories_remaining: Double
-}
-
-
-// MARK: - Fridge Models
-struct FridgeItemResponse: Codable, Identifiable {
-    let id: Int
-    let name: String
-    let quantity: String
-    let category: String
-    let emoji: String?
-    let barcode: String?
-    let expiry_date: String?
-    let created_at: String?
-}
-
-struct FridgeItemCreate: Codable {
-    let name: String
-    let quantity: String
-    let category: String
-    let emoji: String?
-    let barcode: String?
-    let expiry_date: String?
-}
-
-struct FridgeItemUpdate: Codable {
-    var name: String?
-    var quantity: String?
-    var category: String?
-    var emoji: String?
-    var expiry_date: String?
-}
-
-struct FridgeStatsResponse: Codable {
-    let total_items: Int
-    let expiring_soon: Int
-    let expired: Int
-    let categories: [String: Int]
-}
-
-
-// MARK: - Recipe Models
-struct RecipeResponse: Codable, Identifiable {
-    let id: Int?
-    let name: String
-    let description: String?
-    let ingredients: [RecipeIngredientResponse]?
-    let calories: Int?
-    let proteins: Double?
-    let fats: Double?
-    let carbs: Double?
-    let cook_time: Int?
-    let category: String?
-    let cuisine: String?
-    let image_url: String?
-    let is_saved: Bool?
-    let source: String?
-    let created_at: String?
-}
-
-struct RecipeIngredientResponse: Codable {
-    let name: String
-    let amount: String?
-    let in_fridge: Bool?
-}
-
-struct RecipeFromFridgeResponse: Codable {
-    let recipes: [RecipeResponse]
-    let fridge_items_count: Int?
-    let message: String?
-}
-
-struct RecipeExploreResponse: Codable {
-    let recipes: [RecipeResponse]
-    let message: String?
-}
-
-struct RecipeCreate: Encodable {
-    let name: String
-    let description: String?
-    let ingredients: [[String: AnyEncodable]]?
-    let calories: Int
-    let proteins: Double
-    let fats: Double
-    let carbs: Double
-    let cook_time: Int
-    let category: String?
-    let cuisine: String?
-    let image_url: String?
-    let source: String?
-}
-
-struct CookRecipeResponse: Codable {
-    let message: String
-    let calories_added: Int?
-    let ingredients_deducted: [String]?
-}
-
-struct AddMissingResponse: Codable {
-    let message: String
-    let added: Int
-}
-
-
-// MARK: - Shopping Models
-struct ShoppingItemResponse: Codable, Identifiable {
-    let id: Int
-    let name: String
-    let amount: String?
-    let category: String?
-    let is_checked: Bool
-    let from_recipe: String?
-    let created_at: String?
-}
-
-struct ShoppingItemCreate: Codable {
-    let name: String
-    let amount: String?
-    let category: String?
-    let from_recipe: String?
-}
-
-struct ShoppingToggleResponse: Codable {
-    let id: Int
-    let is_checked: Bool
-}
-
-struct ShoppingProgressResponse: Codable {
-    let total: Int
-    let checked: Int
-    let unchecked: Int
-    let from_recipes: Int
-}
-
-struct TransferToFridgeResponse: Codable {
-    let message: String
-    let transferred: Int
-}
-
-struct ClearCheckedResponse: Codable {
-    let message: String
-    let count: Int
-}
-
-
-// MARK: - AnyEncodable helper
-struct AnyEncodable: Encodable {
-    private let _encode: (Encoder) throws -> Void
-
-    init<T: Encodable>(_ wrapped: T) {
-        _encode = wrapped.encode
-    }
-
-    func encode(to encoder: Encoder) throws {
-        try _encode(encoder)
-    }
 }
 
 
@@ -691,109 +575,85 @@ class NetworkManager {
         return try JSONDecoder().decode(ScanResult.self, from: data)
     }
     
-    // MARK: - Fridge
-    func getFridgeItems(category: String? = nil) async throws -> [FridgeItemResponse] {
-        var path = "/fridge/items"
-        if let cat = category {
-            path += "?category=\(cat)"
+    // MARK: - Auth (new endpoints)
+    
+    func logout() async throws -> MessageResponse {
+        return try await request("/auth/logout", method: "POST")
+    }
+    
+    func verifyEmail(email: String, code: String) async throws -> MessageResponse {
+        struct Body: Encodable { let email: String; let code: String }
+        return try await request("/auth/verify-email", method: "POST", body: Body(email: email, code: code))
+    }
+    
+    func resendVerification(email: String) async throws -> MessageResponse {
+        struct Body: Encodable { let email: String }
+        return try await request("/auth/resend-verification", method: "POST", body: Body(email: email))
+    }
+    
+    func forgotPassword(email: String) async throws -> MessageResponse {
+        struct Body: Encodable { let email: String }
+        return try await request("/auth/forgot-password", method: "POST", body: Body(email: email))
+    }
+    
+    func resetPassword(email: String, code: String, newPassword: String) async throws -> MessageResponse {
+        struct Body: Encodable { let email: String; let code: String; let new_password: String }
+        return try await request("/auth/reset-password", method: "POST", body: Body(email: email, code: code, new_password: newPassword))
+    }
+    
+    func changePassword(currentPassword: String, newPassword: String) async throws -> MessageResponse {
+        struct Body: Encodable { let current_password: String; let new_password: String }
+        return try await request("/auth/change-password", method: "POST", body: Body(current_password: currentPassword, new_password: newPassword))
+    }
+    
+    func deleteAccount() async throws -> MessageResponse {
+        return try await request("/auth/me", method: "DELETE")
+    }
+    
+    // MARK: - Preferences
+    
+    func getPreferences() async throws -> PreferencesResponse {
+        return try await request("/preferences")
+    }
+    
+    func savePreferences(_ prefs: [String: Any]) async throws -> PreferencesResponse {
+        guard let url = URL(string: BASE_URL + "/preferences") else { throw APIError.networkError }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        authHeaders().forEach { req.setValue($1, forHTTPHeaderField: $0) }
+        let wrapper: [String: Any] = ["preferences": prefs]
+        req.httpBody = try JSONSerialization.data(withJSONObject: wrapper)
+        let (data, response) = try await session.data(for: req)
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 401 {
+            AuthStorage.shared.logout()
+            await MainActor.run { NotificationCenter.default.post(name: .didLogout, object: nil) }
+            throw APIError.unauthorized
         }
-        return try await request(path)
-    }
-    
-    func addFridgeItem(_ item: FridgeItemCreate) async throws -> FridgeItemResponse {
-        return try await request("/fridge/items", method: "POST", body: item)
-    }
-    
-    func addFridgeItemsBulk(_ items: [FridgeItemCreate]) async throws -> [FridgeItemResponse] {
-        return try await request("/fridge/items/bulk", method: "POST", body: items)
-    }
-    
-    func updateFridgeItem(id: Int, update: FridgeItemUpdate) async throws -> FridgeItemResponse {
-        return try await request("/fridge/items/\(id)", method: "PATCH", body: update)
-    }
-    
-    func deleteFridgeItem(id: Int) async throws {
-        let _: [String: String] = try await request("/fridge/items/\(id)", method: "DELETE")
-    }
-    
-    func getFridgeStats() async throws -> FridgeStatsResponse {
-        return try await request("/fridge/stats")
-    }
-    
-    func getExpiringItems(days: Int = 3) async throws -> [FridgeItemResponse] {
-        return try await request("/fridge/expiring?days=\(days)")
-    }
-    
-    // MARK: - Recipes
-    func getRecipesFromFridge() async throws -> RecipeFromFridgeResponse {
-        return try await request("/recipes/from-fridge")
-    }
-    
-    func exploreRecipes(category: String? = nil, cuisine: String? = nil, query: String? = nil) async throws -> RecipeExploreResponse {
-        var params: [String] = []
-        if let cat = category { params.append("category=\(cat)") }
-        if let cuis = cuisine { params.append("cuisine=\(cuis)") }
-        if let q = query?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) { params.append("query=\(q)") }
-        let queryStr = params.isEmpty ? "" : "?" + params.joined(separator: "&")
-        return try await request("/recipes/explore\(queryStr)")
-    }
-    
-    func getSavedRecipes() async throws -> [RecipeResponse] {
-        return try await request("/recipes/saved")
-    }
-    
-    func saveRecipe(_ recipe: RecipeCreate) async throws -> RecipeResponse {
-        return try await request("/recipes/save", method: "POST", body: recipe)
-    }
-    
-    func unsaveRecipe(id: Int) async throws {
-        let _: [String: String] = try await request("/recipes/saved/\(id)", method: "DELETE")
-    }
-    
-    func cookRecipe(id: Int) async throws -> CookRecipeResponse {
-        return try await request("/recipes/cook/\(id)", method: "POST")
-    }
-    
-    func addMissingToShopping(recipeId: Int) async throws -> AddMissingResponse {
-        struct Body: Codable { let recipe_id: Int }
-        return try await request("/recipes/add-missing-to-shopping", method: "POST", body: Body(recipe_id: recipeId))
-    }
-    
-    // MARK: - Shopping
-    func getShoppingItems(checked: Bool? = nil) async throws -> [ShoppingItemResponse] {
-        var path = "/shopping/items"
-        if let checked = checked {
-            path += "?checked=\(checked)"
+        guard let result = try? JSONDecoder().decode(PreferencesResponse.self, from: data) else {
+            let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
+            throw APIError.serverError(errStr)
         }
-        return try await request(path)
+        return result
     }
     
-    func addShoppingItem(_ item: ShoppingItemCreate) async throws -> ShoppingItemResponse {
-        return try await request("/shopping/items", method: "POST", body: item)
-    }
-    
-    func addShoppingItemsBulk(_ items: [ShoppingItemCreate]) async throws -> [ShoppingItemResponse] {
-        return try await request("/shopping/items/bulk", method: "POST", body: items)
-    }
-    
-    func toggleShoppingItem(id: Int) async throws -> ShoppingToggleResponse {
-        return try await request("/shopping/items/\(id)/toggle", method: "PATCH")
-    }
-    
-    func deleteShoppingItem(id: Int) async throws {
-        let _: [String: String] = try await request("/shopping/items/\(id)", method: "DELETE")
-    }
-    
-    func clearCheckedItems() async throws -> ClearCheckedResponse {
-        return try await request("/shopping/items/checked/clear", method: "DELETE")
-    }
-    
-    func transferToFridge() async throws -> TransferToFridgeResponse {
-        return try await request("/shopping/transfer-to-fridge", method: "POST")
-    }
-    
-    func getShoppingProgress() async throws -> ShoppingProgressResponse {
-        return try await request("/shopping/progress")
+    func updatePreferences(_ prefs: [String: Any]) async throws -> PreferencesResponse {
+        guard let url = URL(string: BASE_URL + "/preferences") else { throw APIError.networkError }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PATCH"
+        authHeaders().forEach { req.setValue($1, forHTTPHeaderField: $0) }
+        let wrapper: [String: Any] = ["preferences": prefs]
+        req.httpBody = try JSONSerialization.data(withJSONObject: wrapper)
+        let (data, response) = try await session.data(for: req)
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 401 {
+            AuthStorage.shared.logout()
+            await MainActor.run { NotificationCenter.default.post(name: .didLogout, object: nil) }
+            throw APIError.unauthorized
+        }
+        guard let result = try? JSONDecoder().decode(PreferencesResponse.self, from: data) else {
+            let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
+            throw APIError.serverError(errStr)
+        }
+        return result
     }
     
 }
